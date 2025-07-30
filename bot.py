@@ -193,52 +193,19 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         sinal_ativo["gale_message_id"] = message.message_id
                         sinal_ativo["resultado_id"] = resultado_id  # Atualizar para esperar próximo resultado
                         logging.info(f"Mensagem de 1º gale enviada: {mensagem_gale}, ID: {message.message_id}")
-                    elif sinal_ativo["gale_nivel"] == 1:
-                        # Falha no 1º gale: enviar mensagem de 2º gale
-                        detecao_pausada = True
-                        # Apagar mensagem do 1º gale
+                    else:
+                        # Erro no 1º gale
                         if sinal_ativo["gale_message_id"]:
                             try:
                                 await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                                 logging.debug(f"Mensagem de 1º gale apagada: ID {sinal_ativo['gale_message_id']}")
                             except TelegramError as e:
                                 logging.debug(f"Erro ao apagar mensagem de 1º gale: {e}")
-                        mensagem_gale = "BORA GANHAR NO 2º GALE🎯"
-                        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
-                        sinal_ativo["gale_nivel"] = 2
-                        sinal_ativo["gale_message_id"] = message.message_id
-                        sinal_ativo["resultado_id"] = resultado_id  # Atualizar para esperar próximo resultado
-                        logging.info(f"Mensagem de 2º gale enviada: {mensagem_gale}, ID: {message.message_id}")
-                    else:
-                        # Verificar se o 2º gale acertou (mesma cor ou empate)
-                        if resultado == sinal_ativo["sinal"] or resultado == "🟡":
-                            placar["✅"] += 1
-                            # Apagar mensagem de 2º gale
-                            if sinal_ativo["gale_message_id"]:
-                                try:
-                                    await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                                    logging.debug(f"Mensagem de 2º gale apagada: ID {sinal_ativo['gale_message_id']}")
-                                except TelegramError as e:
-                                    logging.debug(f"Erro ao apagar mensagem de 2º gale: {e}")
-                            # Enviar validação com resultados da rodada do 2º gale
-                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
-                            await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
-                            logging.info(f"Validação enviada (2º Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
-                            sinais_ativos.remove(sinal_ativo)
-                            detecao_pausada = False  # Retomar detecção após resolver o gale
-                        else:
-                            # Erro no 2º gale
-                            if sinal_ativo["gale_message_id"]:
-                                try:
-                                    await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                                    logging.debug(f"Mensagem de 2º gale apagada: ID {sinal_ativo['gale_message_id']}")
-                                except TelegramError as e:
-                                    logging.debug(f"Erro ao apagar mensagem de 2º gale: {e}")
-                            placar["✅"] = 0  # Zerar o placar após erro no 2º gale
-                            await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
-                            logging.info(f"Validação enviada (Erro 2º Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
-                            sinais_ativos.remove(sinal_ativo)
-                            detecao_pausada = False  # Retomar detecção após erro
+                        placar["✅"] = 0  # Zerar o placar após erro no 1º gale
+                        await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
+                        logging.info(f"Validação enviada (Erro 1º Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
+                        sinais_ativos.remove(sinal_ativo)
+                        detecao_pausada = False  # Retomar detecção após erro
 
                 # Após validação, retomar monitoramento
                 ultima_mensagem_monitoramento = None
