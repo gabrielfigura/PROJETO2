@@ -35,22 +35,22 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões fortes
+# Padrões fortes (sequências com 5 ou mais resultados)
 PADROES = [
-    {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴", "peso": 0.9},
-    {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵", "peso": 0.9},
-    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵", "peso": 0.85},
-    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴", "peso": 0.85},
-    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴", "peso": 0.8},
-    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵", "peso": 0.8},
-    {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴", "peso": 0.8},
-    {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵", "peso": 0.8},
-    {"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴", "peso": 0.8},
-    {"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵", "peso": 0.8},
-    {"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵", "peso": 0.8},
-    {"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴", "peso": 0.8},
-    {"id": 8, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵", "peso": 0.8},
-    {"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴", "peso": 0.8}
+    {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 8, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -97,7 +97,7 @@ async def fetch_resultado():
             logging.error(f"Erro inesperado ao buscar resultado: {e}")
             return None, None, None, None
 
-def verificar_tendencia(historico, sinal, tamanho_janela=10):
+def verificar_tendencia(historico, sinal, tamanho_janela=8):
     """Verifica se o sinal está alinhado com a tendência dos últimos resultados."""
     if len(historico) < tamanho_janela:
         return True  # Não há histórico suficiente, aceitar o sinal
@@ -108,14 +108,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=10):
         return True  # Sem resultados válidos, aceitar o sinal
     proporcao = contagem[sinal] / total
     logging.debug(f"Tendência: {sinal} aparece {contagem[sinal]}/{total} ({proporcao:.2%})")
-    return proporcao >= 0.75  # Exige 75% de dominância para considerar o sinal
-
-def verificar_empates_consecutivos(historico):
-    """Verifica se há 2 ou mais empates consecutivos no final do histórico."""
-    if len(historico) >= 2 and historico[-1] == "🟡" and historico[-2] == "🟡":
-        logging.debug("Dois ou mais empates consecutivos detectados, sinal bloqueado.")
-        return True
-    return False
+    return proporcao >= 0.7  # Exige 70% de dominância para considerar o sinal
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
@@ -138,6 +131,7 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 
         sequencia_str = " ".join(sequencia)
         mensagem = f"""🎯 SINAL ENCONTRADO
+Padrão ID: {padrao_id}
 Sequência: {sequencia_str}
 Entrar: {sinal}
 Proteger o empate🟡
@@ -184,12 +178,11 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         except TelegramError as e:
                             logging.debug(f"Erro ao apagar mensagem de gale: {e}")
                     # Enviar validação com resultados da rodada atual
-                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
                     detecao_pausada = False  # Garantir que a detecção seja reativada
-                    rodadas_desde_erro = 0  # Resetar cooldown após acerto
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
                         # Primeira perda: pausar detecção e enviar mensagem de 1º gale
@@ -228,12 +221,11 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de 2º gale: {e}")
                             # Enviar validação com resultados da rodada do 2º gale
-                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                             await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             logging.info(f"Validação enviada (2º Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                             sinais_ativos.remove(sinal_ativo)
                             detecao_pausada = False  # Retomar detecção após resolver o gale
-                            rodadas_desde_erro = 0  # Resetar cooldown após acerto
                         else:
                             # Erro no 2º gale
                             if sinal_ativo["gale_message_id"]:
@@ -246,8 +238,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
                             logging.info(f"Validação enviada (Erro 2º Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
-                            detecao_pausada = True  # Pausar detecção após erro
-                            rodadas_desde_erro = 0  # Iniciar cooldown
+                            detecao_pausada = False  # Retomar detecção após erro
 
                 # Após validação, retomar monitoramento
                 ultima_mensagem_monitoramento = None
@@ -328,13 +319,13 @@ async def main():
                 # Verifica se há sinais ativos para validar
                 await enviar_resultado(resultado, player_score, banker_score, resultado_id)
 
-                # Detecta padrão e envia sinal, apenas se detecção não estiver pausada e não houver empates consecutivos
-                if not detecao_pausada and rodadas_desde_erro >= 1 and not verificar_empates_consecutivos(historico):
+                # Detecta padrão e envia sinal, apenas se detecção não estiver pausada
+                if not detecao_pausada:
                     logging.debug(f"Detecção de padrões ativa. Histórico: {historico}")
-                    padroes_ordenados = sorted(PADROES, key=lambda x: (x["peso"], len(x["sequencia"])), reverse=True)
+                    padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
                     for padrao in padroes_ordenados:
                         seq = padrao["sequencia"]
-                        logging.debug(f"Verificando padrão ID {padrao['id']}: Sequência {seq}, Peso: {padrao['peso']}")
+                        logging.debug(f"Verificando padrão ID {padrao['id']}: Sequência {seq}")
                         if (len(historico) >= len(seq) and 
                             historico[-len(seq):] == seq and 
                             padrao["id"] != ultimo_padrao_id and 
