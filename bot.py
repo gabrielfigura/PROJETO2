@@ -108,7 +108,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=8):
         return True  # Sem resultados válidos, aceitar o sinal
     proporcao = contagem[sinal] / total
     logging.debug(f"Tendência: {sinal} aparece {contagem[sinal]}/{total} ({proporcao:.2%})")
-    return proporcao >= 0.9  # Exige 90% de dominância para considerar o sinal
+    return proporcao >= 0.7  # Exige 70% de dominância para considerar o sinal
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
