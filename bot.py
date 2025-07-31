@@ -6,7 +6,6 @@ from telegram import Bot
 from telegram.error import TelegramError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from collections import Counter
-import numpy as np
 from datetime import datetime, timedelta
 
 # Configurações do Bot
@@ -96,9 +95,9 @@ async def fetch_resultado():
             return None, None, None, None
 
 def calcular_probabilidade_sinal(historico, sinal, sequencia, prob_base, tamanho_janela=10):
-    """Calcula a probabilidade de acerto do sinal com base no histórico e entropia."""
+    """Calcula a probabilidade de acerto do sinal com base no histórico (sem numpy)."""
     if len(historico) < tamanho_janela:
-        return prob_base  # Usa probabilidade base se histórico for insuficiente
+        return prob_base
     janela = historico[-tamanho_janela:]
     contagem = Counter(janela)
     total = contagem["🔴"] + contagem["🔵"]
@@ -109,17 +108,16 @@ def calcular_probabilidade_sinal(historico, sinal, sequencia, prob_base, tamanho
     proporcao = contagem[sinal] / total
     logging.debug(f"Proporção de {sinal}: {proporcao:.2%} em janela de {tamanho_janela}")
     
-    # Entropia para medir imprevisibilidade
+    # Aproximação de entropia usando variância
     proporcoes = [contagem["🔴"]/total, contagem["🔵"]/total] if total > 0 else [0.5, 0.5]
-    entropia = -sum(p * np.log2(p + 1e-10) for p in proporcoes if p > 0)
-    entropia_normalizada = entropia / np.log2(2)  # Normaliza para 0-1
+    variancia = sum((p - 0.5) ** 2 for p in proporcoes) / 2
+    fator_confianca = 1 - variancia
     
-    # Ajustar probabilidade com base na entropia e dominância
-    fator_entropia = 1 - entropia_normalizada  # Baixa entropia = maior confiança
-    prob_ajustada = prob_base * (0.5 + 0.5 * proporcao) * fator_entropia
-    logging.debug(f"Probabilidade ajustada: {prob_ajustada:.2%} (Entropia: {entropia_normalizada:.2f})")
+    # Ajustar probabilidade
+    prob_ajustada = prob_base * (0.5 + 0.5 * proporcao) * fator_confianca
+    logging.debug(f"Probabilidade ajustada: {prob_ajustada:.2%} (Variância: {variancia:.2f})")
     
-    return min(prob_ajustada, 0.95)  # Limita probabilidade máxima
+    return min(prob_ajustada, 0.95)
 
 def verificar_tendencia(historico, sinal, tamanho_janela=10):
     """Verifica se o sinal está alinhado com a tendência dos últimos resultados."""
@@ -132,7 +130,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=10):
         return True
     proporcao = contagem[sinal] / total
     logging.debug(f"Tendência: {sinal} aparece {contagem[sinal]}/{total} ({proporcao:.2%})")
-    return proporcao >= 0.75  # Exige 75% de dominância
+    return proporcao >= 0.75
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia, probabilidade):
