@@ -1,4 +1,3 @@
-GALE 2
 import asyncio
 import aiohttp
 import logging
