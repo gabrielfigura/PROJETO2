@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 # Configurações do Bot
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc")
-CHAT_ID = os.getenv("CHAT_ID", "-1002506692600")
+CHAT_ID = os.getenv("CHAT_ID", "--1002506692600")
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
 # Inicializar o bot
@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 # Histórico e estado
 historico = []
 ultimo_resultado_id = None
-ultima_mensagem_previsao = None  # Rastrear ID da mensagem de previsão
+ultima_mensagem_alerta = None  # Rastrear ID da mensagem de alerta
 previsao_atual = None  # Armazena a previsão ativa (hora_prevista, cor_anterior, resultado_id_base)
 
 # Mapeamento de outcomes para emojis
@@ -93,13 +93,13 @@ def prever_empate(historico, player_score, banker_score):
     
     # Verificar se as pontuações estão próximas (indicador de empate)
     diferenca_scores = abs(player_score - banker_score)
-    if diferenca_scores <= 1 and proporcao_empates > 0.2:  # Maior chance de empate com scores próximos
+    if diferenca_scores <= 2 or proporcao_empates > 0.1:  # Ajustado para maior sensibilidade
         # Estimar tempo baseado na frequência (assumindo 2 segundos por resultado)
-        resultados_restantes = max(5 - contagem["🟡"], 1)  # Prever próximo empate em 5 a 10 resultados
+        resultados_restantes = max(3 - contagem["🟡"], 1)  # Reduzido para 3 a 6 resultados
         segundos_restantes = resultados_restantes * 2
         
-        # Hora atual (11:47 AM WAT, 02/08/2025)
-        hora_atual = datetime(2025, 8, 2, 11, 47)  # Ajustado para o horário atual
+        # Hora atual (04:16 PM WAT, 02/08/2025)
+        hora_atual = datetime(2025, 8, 2, 16, 16)  # Ajustado para o horário atual
         hora_prevista = hora_atual + timedelta(seconds=segundos_restantes)
         
         # Cor anterior (último resultado antes do previsto)
@@ -112,20 +112,20 @@ def prever_empate(historico, player_score, banker_score):
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resultado_id_base):
     """Envia a previsão de empate ao Telegram e armazena a previsão ativa."""
-    global ultima_mensagem_previsao, previsao_atual
+    global ultima_mensagem_alerta, previsao_atual
     try:
         # Apagar a última mensagem de previsão, se existir
-        if ultima_mensagem_previsao:
+        if ultima_mensagem_alerta:
             try:
-                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_previsao)
+                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_alerta)
                 logging.debug("Mensagem de previsão anterior apagada")
             except TelegramError as e:
                 logging.debug(f"Erro ao apagar mensagem de previsão: {e}")
-            ultima_mensagem_previsao = None
+            ultima_mensagem_alerta = None
 
         mensagem = f"🎯 PREVISÃO DE EMPATE\nHorário previsto: {hora_prevista}\nApós: {cor_anterior if cor_anterior else 'desconhecido'}\nTempo restante: {segundos_restantes} segundos"
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        ultima_mensagem_previsao = message.message_id
+        ultima_mensagem_alerta = message.message_id
         logging.info(f"Previsão enviada: {mensagem}")
         
         # Armazenar previsão ativa
@@ -137,16 +137,27 @@ async def enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resul
         }
         
         # Enviar alerta separado
-        await enviar_alerta(hora_prevista, cor_anterior)
+        await enviar_alerta()
     except TelegramError as e:
         logging.error(f"Erro ao enviar previsão: {e}")
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_alerta(hora_prevista, cor_anterior):
-    """Envia um alerta separado para a previsão de empate."""
+async def enviar_alerta():
+    """Envia um alerta contínuo a cada 15 segundos."""
+    global ultima_mensagem_alerta
     try:
-        mensagem = f"🚨 ALERTA DE PREVISÃO! 🚨\nEmpate previsto para {hora_prevista} após {cor_anterior if cor_anterior else 'desconhecido'}!"
-        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        # Apagar a última mensagem de alerta, se existir
+        if ultima_mensagem_alerta:
+            try:
+                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_alerta)
+                logging.debug("Mensagem de alerta anterior apagada")
+            except TelegramError as e:
+                logging.debug(f"Erro ao apagar mensagem de alerta: {e}")
+            ultima_mensagem_alerta = None
+
+        mensagem = "PREVENDO UM EMPATE🤌"
+        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        ultima_mensagem_alerta = message.message_id
         logging.info(f"Alerta enviado: {mensagem}")
     except TelegramError as e:
         logging.error(f"Erro ao enviar alerta: {e}")
@@ -154,10 +165,10 @@ async def enviar_alerta(hora_prevista, cor_anterior):
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_validacao(resultado, player_score, banker_score, resultado_id):
     """Envia a validação da previsão ao Telegram."""
-    global ultima_mensagem_previsao, previsao_atual, placar
+    global ultima_mensagem_alerta, previsao_atual, placar
     try:
         if previsao_atual and resultado_id > previsao_atual["resultado_id_base"]:
-            hora_atual = datetime(2025, 8, 2, 11, 47) + timedelta(seconds=(resultado_id - previsao_atual["resultado_id_base"]) * 2)
+            hora_atual = datetime(2025, 8, 2, 16, 16) + timedelta(seconds=(resultado_id - previsao_atual["resultado_id_base"]) * 2)
             diferenca_tempo = abs((hora_atual - previsao_atual["hora_prevista"]).total_seconds())
             
             if resultado == "🟡" and diferenca_tempo <= 5:  # Tolerância de 5 segundos
@@ -180,16 +191,10 @@ async def enviar_validacao(resultado, player_score, banker_score, resultado_id):
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_monitoramento():
-    """Envia mensagem de monitoramento a cada 15 segundos, apagando a anterior."""
-    global ultima_mensagem_previsao
+    """Envia alerta contínuo a cada 15 segundos, apagando o anterior."""
     while True:
         try:
-            if not ultima_mensagem_previsao and not previsao_atual:
-                message = await bot.send_message(chat_id=CHAT_ID, text="MONITORANDO A MESA…🤌")
-                ultima_mensagem_previsao = message.message_id
-                logging.debug(f"Mensagem de monitoramento enviada: ID {ultima_mensagem_previsao}")
-            else:
-                logging.debug("Monitoramento pausado: Previsão ou validação ativa")
+            await enviar_alerta()  # Chama o alerta continuamente
         except TelegramError as e:
             logging.error(f"Erro ao enviar monitoramento: {e}")
         await asyncio.sleep(15)
