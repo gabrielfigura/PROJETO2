@@ -6,7 +6,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configurações do Bot
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc")
@@ -22,9 +22,8 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 # Histórico e estado
 historico = []
 ultimo_resultado_id = None
-ultima_mensagem_alerta = None  # Rastrear ID da mensagem de alerta
-previsao_atual = None  # Armazena a previsão ativa
-ultima_atualizacao = None  # Para rastrear repetição da API
+ultima_mensagem_previsao = None  # Rastrear ID da mensagem de previsão
+previsao_atual = None  # Armazena a previsão ativa (hora_prevista, cor_anterior, resultado_id_base)
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -36,15 +35,6 @@ OUTCOME_MAP = {
 # Placar
 placar = {"✅": 0, "❌": 0}
 
-async def enviar_mensagem_inicial():
-    """Envia uma mensagem de inicialização para confirmar que o bot está ativo."""
-    try:
-        mensagem = "🤖 Bot iniciado com sucesso às " + datetime.now().strftime('%H:%M:%S') + " WAT!"
-        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        logging.info(f"Mensagem de inicialização enviada: {mensagem}")
-    except TelegramError as e:
-        logging.error(f"Erro ao enviar mensagem de inicialização: {e}")
-
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
 async def fetch_resultado():
     """Busca o resultado mais recente da API do cassinoscore."""
@@ -53,44 +43,43 @@ async def fetch_resultado():
             async with session.get(API_URL, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status != 200:
                     logging.error(f"Erro na API: Status {response.status}, Resposta: {await response.text()}")
-                    return None, None, None, None, None
+                    return None, None, None, None
                 data = await response.json()
                 logging.debug(f"Resposta da API: {data}")
                 
                 if 'data' not in data or 'result' not in data['data'] or 'outcome' not in data['data']['result']:
                     logging.error(f"Estrutura inválida na resposta: {data}")
-                    return None, None, None, None, None
+                    return None, None, None, None
                 if 'id' not in data:
                     logging.error(f"Chave 'id' não encontrada na resposta: {data}")
-                    return None, None, None, None, None
+                    return None, None, None, None
                 
                 if data['data'].get('status') != 'Resolved':
                     logging.debug(f"Jogo não resolvido: Status {data['data'].get('status')}")
-                    return None, None, None, None, None
+                    return None, None, None, None
                 
                 resultado_id = data['id']
                 outcome = data['data']['result']['outcome']
                 player_score = data['data']['result'].get('playerDice', {}).get('score', 0)
                 banker_score = data['data']['result'].get('bankerDice', {}).get('score', 0)
-                settled_at = datetime.strptime(data['data']['settledAt'], '%Y-%m-%dT%H:%M:%S.%fZ')
                 
                 if outcome not in OUTCOME_MAP:
                     logging.error(f"Outcome inválido: {outcome}")
-                    return None, None, None, None, None
+                    return None, None, None, None
                 resultado = OUTCOME_MAP[outcome]
                 
-                return resultado, resultado_id, player_score, banker_score, settled_at
+                return resultado, resultado_id, player_score, banker_score
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logging.error(f"Erro de conexão com a API: {e}")
-            return None, None, None, None, None
+            return None, None, None, None
         except ValueError as e:
             logging.error(f"Erro ao parsear JSON: {e}")
-            return None, None, None, None, None
+            return None, None, None, None
         except Exception as e:
             logging.error(f"Erro inesperado ao buscar resultado: {e}")
-            return None, None, None, None, None
+            return None, None, None, None
 
-def prever_empate(historico, player_score, banker_score, hora_atual):
+def prever_empate(historico, player_score, banker_score):
     """Preve o próximo empate com base no histórico e scores da API do cassinoscore."""
     if len(historico) < 10:
         return None, None, None, None
@@ -104,12 +93,13 @@ def prever_empate(historico, player_score, banker_score, hora_atual):
     
     # Verificar se as pontuações estão próximas (indicador de empate)
     diferenca_scores = abs(player_score - banker_score)
-    if diferenca_scores <= 2 or proporcao_empates > 0.1:  # Ajustado para maior sensibilidade
+    if diferenca_scores <= 1 and proporcao_empates > 0.2:  # Maior chance de empate com scores próximos
         # Estimar tempo baseado na frequência (assumindo 2 segundos por resultado)
-        resultados_restantes = max(3 - contagem["🟡"], 1)  # Reduzido para 3 a 6 resultados
+        resultados_restantes = max(5 - contagem["🟡"], 1)  # Prever próximo empate em 5 a 10 resultados
         segundos_restantes = resultados_restantes * 2
         
-        # Hora prevista a partir da hora atual
+        # Hora atual (11:47 AM WAT, 02/08/2025)
+        hora_atual = datetime(2025, 8, 2, 11, 47)  # Ajustado para o horário atual
         hora_prevista = hora_atual + timedelta(seconds=segundos_restantes)
         
         # Cor anterior (último resultado antes do previsto)
@@ -122,20 +112,20 @@ def prever_empate(historico, player_score, banker_score, hora_atual):
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resultado_id_base):
     """Envia a previsão de empate ao Telegram e armazena a previsão ativa."""
-    global ultima_mensagem_alerta, previsao_atual
+    global ultima_mensagem_previsao, previsao_atual
     try:
         # Apagar a última mensagem de previsão, se existir
-        if ultima_mensagem_alerta:
+        if ultima_mensagem_previsao:
             try:
-                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_alerta)
+                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_previsao)
                 logging.debug("Mensagem de previsão anterior apagada")
             except TelegramError as e:
                 logging.debug(f"Erro ao apagar mensagem de previsão: {e}")
-            ultima_mensagem_alerta = None
+            ultima_mensagem_previsao = None
 
         mensagem = f"🎯 PREVISÃO DE EMPATE\nHorário previsto: {hora_prevista}\nApós: {cor_anterior if cor_anterior else 'desconhecido'}\nTempo restante: {segundos_restantes} segundos"
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        ultima_mensagem_alerta = message.message_id
+        ultima_mensagem_previsao = message.message_id
         logging.info(f"Previsão enviada: {mensagem}")
         
         # Armazenar previsão ativa
@@ -145,50 +135,42 @@ async def enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resul
             "segundos_restantes": segundos_restantes,
             "resultado_id_base": resultado_id_base
         }
+        
+        # Enviar alerta separado
+        await enviar_alerta(hora_prevista, cor_anterior)
     except TelegramError as e:
         logging.error(f"Erro ao enviar previsão: {e}")
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_alerta():
-    """Envia um alerta contínuo a cada 15 segundos."""
-    global ultima_mensagem_alerta
+async def enviar_alerta(hora_prevista, cor_anterior):
+    """Envia um alerta separado para a previsão de empate."""
     try:
-        # Apagar a última mensagem de alerta, se existir
-        if ultima_mensagem_alerta:
-            try:
-                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_alerta)
-                logging.debug("Mensagem de alerta anterior apagada")
-            except TelegramError as e:
-                logging.debug(f"Erro ao apagar mensagem de alerta: {e}")
-            ultima_mensagem_alerta = None
-
-        mensagem = "PREVENDO UM EMPATE🤌"
-        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        ultima_mensagem_alerta = message.message_id
+        mensagem = f"🚨 ALERTA DE PREVISÃO! 🚨\nEmpate previsto para {hora_prevista} após {cor_anterior if cor_anterior else 'desconhecido'}!"
+        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Alerta enviado: {mensagem}")
     except TelegramError as e:
         logging.error(f"Erro ao enviar alerta: {e}")
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_validacao(resultado, player_score, banker_score, resultado_id, hora_atual):
+async def enviar_validacao(resultado, player_score, banker_score, resultado_id):
     """Envia a validação da previsão ao Telegram."""
-    global ultima_mensagem_alerta, previsao_atual, placar
+    global ultima_mensagem_previsao, previsao_atual, placar
     try:
         if previsao_atual and resultado_id > previsao_atual["resultado_id_base"]:
-            hora_real = hora_atual + timedelta(seconds=(resultado_id - previsao_atual["resultado_id_base"]) * 2)
-            diferenca_tempo = abs((hora_real - previsao_atual["hora_prevista"]).total_seconds())
+            hora_atual = datetime(2025, 8, 2, 11, 47) + timedelta(seconds=(resultado_id - previsao_atual["resultado_id_base"]) * 2)
+            diferenca_tempo = abs((hora_atual - previsao_atual["hora_prevista"]).total_seconds())
             
             if resultado == "🟡" and diferenca_tempo <= 5:  # Tolerância de 5 segundos
                 cor_anterior_real = historico[-2] if historico[-2] in ["🔴", "🔵"] else None
                 if cor_anterior_real == previsao_atual["cor_anterior"]:
                     placar["✅"] += 1
-                    mensagem = f"✅ ACERTO DE EMPATE\nHorário real: {hora_real.strftime('%H:%M:%S')}\nPontuação: {player_score}:{banker_score}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
+                    mensagem = f"✅ ACERTO DE EMPATE\nHorário real: {hora_atual.strftime('%H:%M:%S')}\nPontuação: {player_score}:{banker_score}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
                 else:
                     placar["❌"] += 1
-                    mensagem = f"❌ ERRO DE EMPATE\nHorário real: {hora_real.strftime('%H:%M:%S')}\nPontuação: {player_score}:{banker_score}\nCor prevista: {previsao_atual['cor_anterior']}, Cor real: {cor_anterior_real}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
+                    mensagem = f"❌ ERRO DE EMPATE\nHorário real: {hora_atual.strftime('%H:%M:%S')}\nPontuação: {player_score}:{banker_score}\nCor prevista: {previsao_atual['cor_anterior']}, Cor real: {cor_anterior_real}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
             else:
                 placar["❌"] += 1
-                mensagem = f"❌ ERRO DE EMPATE\nHorário real: {hora_real.strftime('%H:%M:%S')}\nResultado: {resultado}\nPontuação: {player_score}:{banker_score}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
+                mensagem = f"❌ ERRO DE EMPATE\nHorário real: {hora_atual.strftime('%H:%M:%S')}\nResultado: {resultado}\nPontuação: {player_score}:{banker_score}\nPlacar: {placar['✅']}✅ {placar['❌']}❌"
             
             await bot.send_message(chat_id=CHAT_ID, text=mensagem)
             logging.info(f"Validação enviada: {mensagem}")
@@ -198,47 +180,46 @@ async def enviar_validacao(resultado, player_score, banker_score, resultado_id, 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_monitoramento():
-    """Envia alerta contínuo a cada 15 segundos, apagando o anterior."""
+    """Envia mensagem de monitoramento a cada 15 segundos, apagando a anterior."""
+    global ultima_mensagem_previsao
     while True:
         try:
-            await enviar_alerta()  # Chama o alerta continuamente
+            if not ultima_mensagem_previsao and not previsao_atual:
+                message = await bot.send_message(chat_id=CHAT_ID, text="MONITORANDO A MESA…🤌")
+                ultima_mensagem_previsao = message.message_id
+                logging.debug(f"Mensagem de monitoramento enviada: ID {ultima_mensagem_previsao}")
+            else:
+                logging.debug("Monitoramento pausado: Previsão ou validação ativa")
         except TelegramError as e:
             logging.error(f"Erro ao enviar monitoramento: {e}")
         await asyncio.sleep(15)
 
 async def main():
     """Loop principal do bot com reconexão."""
-    global historico, ultimo_resultado_id, ultima_atualizacao
-    logging.info("Iniciando o bot...")
-    await enviar_mensagem_inicial()  # Envia mensagem de inicialização
+    global historico, ultimo_resultado_id
     asyncio.create_task(enviar_monitoramento())
 
     while True:
         try:
-            resultado, resultado_id, player_score, banker_score, settled_at = await fetch_resultado()
+            resultado, resultado_id, player_score, banker_score = await fetch_resultado()
             if not resultado or not resultado_id:
                 await asyncio.sleep(2)
                 continue
 
-            # Verificar se os dados são novos ou estagnados
             if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
                 ultimo_resultado_id = resultado_id
                 historico.append(resultado)
                 historico = historico[-25:]  # Mantém os últimos 25 resultados
-                ultima_atualizacao = settled_at
-                logging.info(f"Histórico atualizado: {historico} (ID: {resultado_id}, Settled at: {settled_at})")
-            elif ultima_atualizacao and (datetime.utcnow() - ultima_atualizacao).total_seconds() > 30:
-                logging.warning("Dados da API estagnados por mais de 30 segundos, forçando nova verificação")
-                ultima_atualizacao = settled_at
+                logging.info(f"Histórico atualizado: {historico} (ID: {resultado_id})")
 
-            # Validar previsão com o resultado atual
-            await enviar_validacao(resultado, player_score, banker_score, resultado_id, settled_at)
+                # Validar previsão com o resultado atual
+                await enviar_validacao(resultado, player_score, banker_score, resultado_id)
 
-            # Prever o próximo empate usando a API do cassinoscore
-            if not previsao_atual:  # Só prever se não houver previsão ativa
-                hora_prevista, cor_anterior, segundos_restantes, resultado_id_base = prever_empate(historico, player_score, banker_score, settled_at)
-                if hora_prevista and cor_anterior is not None:
-                    await enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resultado_id_base)
+                # Prever o próximo empate usando a API do cassinoscore
+                if not previsao_atual:  # Só prever se não houver previsão ativa
+                    hora_prevista, cor_anterior, segundos_restantes, resultado_id_base = prever_empate(historico, player_score, banker_score)
+                    if hora_prevista and cor_anterior is not None:
+                        await enviar_previsao(hora_prevista, cor_anterior, segundos_restantes, resultado_id_base)
 
             await asyncio.sleep(2)
         except Exception as e:
