@@ -40,113 +40,113 @@ aguardando_validacao = False
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
-    "PlayerWon": "🔵",
-    "BankerWon": "🔴",
-    "Tie": "🟡"
+    "PlayerWon": "blue_circle",
+    "BankerWon": "red_circle",
+    "Tie": "yellow_circle"
 }
 
 # Padrões
 PADROES = [
-    { "id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 2, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 4, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 5, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 6, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 7, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 8, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 9, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 10, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 11, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 12, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 14, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 15, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 16, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 17, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 18, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 19, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 20, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 21, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 22, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 23, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 24, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 25, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 26, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 27, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 28, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 29, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 30, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 31, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 32, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 33, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 34, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 35, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 36, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 37, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 38, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 39, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 40, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 41, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 42, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 43, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 44, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 45, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 46, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 47, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 48, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 49, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 50, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 51, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 52, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 53, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 54, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 55, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 56, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 57, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 58, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 59, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 60, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 61, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 62, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 63, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 64, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 65, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 66, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 67, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 68, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 69, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 70, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 71, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 72, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 73, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 74, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 75, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 76, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 77, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 78, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 79, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 80, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 81, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 82, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 83, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 84, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 85, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 86, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 87, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 88, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 89, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 90, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 91, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 92, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 93, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 94, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 95, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 96, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 97, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 98, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 99, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 100, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" }
+    { "id": 1, "sequencia": ["blue_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 2, "sequencia": ["red_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 3, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 4, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 5, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 6, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 7, "sequencia": ["red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 8, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 9, "sequencia": ["red_circle", "blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 10, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 11, "sequencia": ["blue_circle", "red_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 12, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 13, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 14, "sequencia": ["red_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 15, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 16, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 17, "sequencia": ["blue_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 18, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 19, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 20, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 21, "sequencia": ["blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 22, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 23, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 24, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 25, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 26, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 27, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 28, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 29, "sequencia": ["blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 30, "sequencia": ["red_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 31, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 32, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 33, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 34, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 35, "sequencia": ["red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 36, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 37, "sequencia": ["red_circle", "blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 38, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 39, "sequencia": ["blue_circle", "red_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 40, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 41, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 42, "sequencia": ["red_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 43, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 44, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 45, "sequencia": ["blue_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 46, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 47, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 48, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 49, "sequencia": ["blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 50, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 51, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 52, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 53, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 54, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 55, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 56, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 57, "sequencia": ["blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 58, "sequencia": ["red_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 59, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 60, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 61, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 62, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 63, "sequencia": ["red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 64, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 65, "sequencia": ["red_circle", "blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 66, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 67, "sequencia": ["blue_circle", "red_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 68, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 69, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 70, "sequencia": ["red_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 71, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 72, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 73, "sequencia": ["blue_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 74, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 75, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 76, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 77, "sequencia": ["blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 78, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 79, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 80, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 81, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 82, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 83, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 84, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 85, "sequencia": ["blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 86, "sequencia": ["red_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 87, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 88, "sequencia": ["red_circle", "blue_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 89, "sequencia": ["blue_circle", "blue_circle", "red_circle"], "sinal": "blue_circle" },
+    { "id": 90, "sequencia": ["red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 91, "sequencia": ["red_circle", "red_circle", "blue_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 92, "sequencia": ["blue_circle", "red_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 93, "sequencia": ["red_circle", "blue_circle", "red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 94, "sequencia": ["blue_circle", "blue_circle", "red_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 95, "sequencia": ["blue_circle", "red_circle", "blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 96, "sequencia": ["red_circle", "red_circle", "blue_circle"], "sinal": "red_circle" },
+    { "id": 97, "sequencia": ["blue_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 98, "sequencia": ["red_circle", "blue_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" },
+    { "id": 99, "sequencia": ["blue_circle", "red_circle", "red_circle"], "sinal": "red_circle" },
+    { "id": 100, "sequencia": ["red_circle", "blue_circle", "blue_circle"], "sinal": "blue_circle" }
 ]
 
 @retry(stop=stop_after_attempt(7), wait=wait_exponential(multiplier=1, min=4, max=60), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -180,7 +180,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=8):
         return True
     janela = historico[-tamanho_janela:]
     contagem = Counter(janela)
-    total = contagem["🔴"] + contagem["🔵"]
+    total = contagem["red_circle"] + contagem["blue_circle"]
     if total == 0:
         return True
     return True
@@ -198,14 +198,19 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
         if aguardando_validacao or sinais_ativos:
             logging.info(f"Sinal bloqueado: aguardando validação ou sinal ativo (ID: {padrao_id})")
             return False
+        
         sequencia_str = " ".join(sequencia)
-        mensagem = f"""🤖 QUILEBA BOT 🤖
+        mensagem = f"""ROBOT QUILEBA BOT ROBOT
 ENTRA NO: {sinal}
-🛡️ PROTEJA O EMPATE🟡
-        # Adiciona o botão "EMPATES 🟡"
-        keyboard = [[InlineKeyboardButton("EMPATES 🟡", callback_data="mostrar_empates")]]
+PROTEJA O EMPATE yellow_circle
+Sequência: {sequencia_str}"""
+
+        # Adiciona o botão "EMPATES yellow_circle"
+        keyboard = [[InlineKeyboardButton("EMPATES yellow_circle", callback_data="mostrar_empates")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, reply_markup=reply_markup)
+        
         sinais_ativos.append({
             "sinal": sinal,
             "padrao_id": padrao_id,
@@ -223,13 +228,13 @@ ENTRA NO: {sinal}
         raise
 
 async def mostrar_empates(update, context):
-    """Handler para o botão EMPATES 🟡"""
+    """Handler para o botão EMPATES yellow_circle"""
     try:
         if not empates_historico:
             await update.callback_query.answer("Nenhum empate registrado ainda.")
             return
-        empates_str = "\n".join([f"Empate {i+1}: 🟡 (🔵 {e['player_score']} x 🔴 {e['banker_score']})" for i, e in enumerate(empates_historico)])
-        mensagem = f"📊 Histórico de Empates 🟡\n\n{empates_str}"
+        empates_str = "\n".join([f"Empate {i+1}: yellow_circle (blue_circle {e['player_score']} x red_circle {e['banker_score']})" for i, e in enumerate(empates_historico)])
+        mensagem = f"Histórico de Empates yellow_circle\n\n{empates_str}"
         await update.callback_query.message.reply_text(mensagem)
         await update.callback_query.answer()
     except TelegramError as e:
@@ -246,7 +251,7 @@ async def resetar_placar():
         "empates": 0
     }
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="🔄 Placar resetado após 10 erros! Começando do zero.")
+        await bot.send_message(chat_id=CHAT_ID, text="Placar resetado após 10 erros! Começando do zero.")
         await enviar_placar()
     except TelegramError:
         pass
@@ -257,10 +262,10 @@ async def enviar_placar():
         total_sinais = total_acertos + placar['losses']
         precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
         precisao = min(precisao, 100.0)
-        mensagem_placar = f"""📊QUILEBA PLACAR📊
-🎯ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
+        mensagem_placar = f"""QUILEBA PLACAR
+ACERTOS: {total_acertos}
+ERROS: {placar['losses']}
+PRECISÃO: {precisao:.2f}%"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
     except TelegramError:
         pass
@@ -270,14 +275,14 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada, placar, ultimo_padrao_id, aguardando_validacao, empates_historico
     try:
         # Armazena empates no histórico
-        if resultado == "🟡":
+        if resultado == "yellow_circle":
             empates_historico.append({"player_score": player_score, "banker_score": banker_score})
             if len(empates_historico) > 50:  # Limita o histórico para evitar excesso de memória
                 empates_historico.pop(0)
         for sinal_ativo in sinais_ativos[:]:
             if sinal_ativo["resultado_id"] != resultado_id:
-                if resultado == sinal_ativo["sinal"] or resultado == "🟡":
-                    if resultado == "🟡":
+                if resultado == sinal_ativo["sinal"] or resultado == "yellow_circle":
+                    if resultado == "yellow_circle":
                         placar["empates"] += 1
                     if sinal_ativo["gale_nivel"] == 0:
                         placar["ganhos_seguidos"] += 1
@@ -290,7 +295,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                         except TelegramError:
                             pass
-                    mensagem_validacao = f" ACERTOU ✅\n🎲 Resultado: 🔵 {player_score} x 🔴 {banker_score}"
+                    mensagem_validacao = f" ACERTOU check_mark\nResultado: blue_circle {player_score} x red_circle {banker_score}"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     await enviar_placar()
                     ultimo_padrao_id = None
@@ -301,14 +306,14 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
                         detecao_pausada = True
-                        mensagem_gale = "🔄 FAZER 1º Gale"
+                        mensagem_gale = "FAZER 1º Gale"
                         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
                         sinal_ativo["gale_nivel"] = 1
                         sinal_ativo["gale_message_id"] = message.message_id
                         sinal_ativo["resultado_id"] = resultado_id
                     elif sinal_ativo["gale_nivel"] == 1:
                         detecao_pausada = True
-                        mensagem_gale = "🔄 FAZER 2º Gale"
+                        mensagem_gale = "FAZER 2º Gale"
                         try:
                             await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                         except TelegramError:
@@ -324,7 +329,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                                 await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                             except TelegramError:
                                 pass
-                        await bot.send_message(chat_id=CHAT_ID, text="❌ ERRAMOS❌")
+                        await bot.send_message(chat_id=CHAT_ID, text="ERRAMOS cross_mark")
                         await enviar_placar()
                         if placar["losses"] >= 10:
                             await resetar_placar()
@@ -361,7 +366,7 @@ async def enviar_monitoramento():
                         await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_monitoramento)
                     except TelegramError:
                         pass
-                message = await bot.send_message(chat_id=CHAT_ID, text="🔎MONITORANDO A MESA…")
+                message = await bot.send_message(chat_id=CHAT_ID, text="MONITORANDO A MESA...")
                 ultima_mensagem_monitoramento = message.message_id
             await asyncio.sleep(15)
         except TelegramError:
@@ -375,10 +380,10 @@ async def enviar_relatorio():
             total_sinais = total_acertos + placar['losses']
             precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
             precisao = min(precisao, 100.0)
-            msg = f"""📊 QUILEBA PLACAR 📊
-🎯ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
+            msg = f"""QUILEBA PLACAR 
+ACERTOS: {total_acertos}
+ERROS: {placar['losses']}
+PRECISÃO: {precisao:.2f}%"""
             await bot.send_message(chat_id=CHAT_ID, text=msg)
         except TelegramError:
             pass
@@ -386,7 +391,7 @@ async def enviar_relatorio():
 
 async def enviar_erro_telegram(erro_msg):
     try:
-        await bot.send_message(chat_id=CHAT_ID, text=f"❌ Erro detectado: {erro_msg}")
+        await bot.send_message(chat_id=CHAT_ID, text=f"Erro detectado: {erro_msg}")
     except TelegramError:
         pass
 
@@ -401,7 +406,7 @@ async def main():
     asyncio.create_task(enviar_relatorio())
     asyncio.create_task(enviar_monitoramento())
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="🚀 Bot iniciado com sucesso!")
+        await bot.send_message(chat_id=CHAT_ID, text="Bot iniciado com sucesso!")
     except TelegramError:
         pass
     while True:
