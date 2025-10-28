@@ -9,8 +9,8 @@ from collections import Counter
 import uuid
 
 # Configurações do Bot (valores fixos para teste)
-BOT_TOKEN = "7707964414:AAGFOQPwCSpNGmYoEZAEVq6sKOD6r26tXOY"
-CHAT_ID = "-1002859771274"
+BOT_TOKEN = "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc"
+CHAT_ID = "-1002506692600"
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
 # Inicializar o bot e a aplicação
