@@ -1,443 +1,519 @@
+import os
 import asyncio
-import aiohttp
 import logging
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler
-from telegram.error import TelegramError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+import pytz
 from collections import Counter
-import uuid
 
-# Configurações do Bot (valores fixos para teste)
-BOT_TOKEN = "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc"
-CHAT_ID = "-1002506692600"
-API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
+import aiohttp
+from telegram import Bot
+from telegram.error import TelegramError
+from dotenv import load_dotenv
 
-# Inicializar o bot e a aplicação
-bot = Bot(token=BOT_TOKEN)
-application = Application.builder().token(BOT_TOKEN).build()
+load_dotenv()
 
-# Configuração de logging
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+# Configurações
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7592335545:AAGjbyAZYG33LC42xvCDOaxBgrM-jXW5XXQ")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1002629616421")  # MUDE SE NECESSÁRIO
 
-# Histórico e estado
-historico = []
-empates_historico = []  # Novo: armazena resultados de empates
-ultimo_padrao_id = None
-ultimo_resultado_id = None
-sinais_ativos = []
-placar = {
-    "ganhos_seguidos": 0,
-    "ganhos_gale1": 0,
-    "ganhos_gale2": 0,
-    "losses": 0,
-    "empates": 0
+API_URL = "https://api-cs.casino.org/svc-evolution-game-events/api/bacbo/latest"
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
 }
-rodadas_desde_erro = 0
-ultima_mensagem_monitoramento = None
-detecao_pausada = False
-aguardando_validacao = False
 
-# Mapeamento de outcomes para emojis
+ANGOLA_TZ = pytz.timezone('Africa/Luanda')
+
 OUTCOME_MAP = {
     "PlayerWon": "🔵",
     "BankerWon": "🔴",
-    "Tie": "🟡"
+    "Tie": "🟡",
+    "🔵": "🔵",
+    "🔴": "🔴",
+    "🟡": "🟡",
 }
 
-# Padrões
-PADROES = [
-    { "id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 2, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 4, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 5, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 6, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 7, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 8, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 9, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 10, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 11, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 12, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 14, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 15, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 16, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 17, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 18, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 19, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 20, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 21, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 22, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 23, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 24, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 25, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 26, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 27, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 28, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 29, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 30, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 31, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 32, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 33, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 34, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 35, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 36, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 37, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 38, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 39, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 40, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 41, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 42, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 43, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 44, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 45, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 46, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 47, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 48, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 49, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 50, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 51, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 52, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 53, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 54, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 55, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 56, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 57, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 58, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 59, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 60, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 61, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 62, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 63, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 64, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 65, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 66, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 67, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 68, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 69, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 70, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 71, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 72, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 73, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 74, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 75, "sequencia": ["🔴", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 76, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 77, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 78, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 79, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 80, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 81, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 82, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 83, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 84, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 85, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 86, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 87, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 88, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 89, "sequencia": ["🔵", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 90, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 91, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴" },
-    { "id": 92, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 93, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 94, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵" },
-    { "id": 95, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 96, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 97, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 98, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵" },
-    { "id": 99, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴" },
-    { "id": 100, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵" }
-]
+API_POLL_INTERVAL = 3
+SIGNAL_CYCLE_INTERVAL = 5
+ANALISE_REFRESH_INTERVAL = 15
 
-@retry(stop=stop_after_attempt(7), wait=wait_exponential(multiplier=1, min=4, max=60), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
-async def fetch_resultado():
-    """Busca o resultado mais recente da API com retry e timeout aumentado."""
-    async with aiohttp.ClientSession() as session:
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-5s | %(message)s'
+)
+logger = logging.getLogger("BacBoBot")
+
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+state: Dict[str, Any] = {
+    "history": [],
+    "last_round_id": None,
+    "waiting_for_result": False,
+    "last_signal_color": None,
+    "martingale_count": 0,
+    "entrada_message_id": None,
+    "martingale_message_ids": [],
+    "greens_seguidos": 0,
+    "total_greens": 0,
+    "greens_sem_gale": 0,
+    "greens_gale_1": 0,
+    "greens_gale_2": 0,
+    "total_empates": 0,
+    "total_losses": 0,
+    "last_signal_pattern": None,
+    "last_signal_sequence": None,
+    "last_signal_round_id": None,
+    "signal_cooldown": False,
+    "analise_message_id": None,
+    "last_reset_date": None,
+    "last_analise_refresh": 0.0,
+    "last_result_round_id": None,
+    "player_score_last": None,
+    "banker_score_last": None,
+}
+
+async def send_to_channel(text: str, parse_mode="HTML") -> Optional[int]:
+    try:
+        msg = await bot.send_message(
+            chat_id=TELEGRAM_CHANNEL_ID,
+            text=text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=True
+        )
+        return msg.message_id
+    except TelegramError as te:
+        logger.error(f"Telegram Error: {te}")
+        return None
+    except Exception as e:
+        logger.exception("Erro ao enviar mensagem")
+        return None
+
+async def send_error_to_channel(error_msg: str):
+    timestamp = datetime.now(ANGOLA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    text = f"⚠️ <b>ERRO DETECTADO</b> ⚠️\n<code>{timestamp}</code>\n\n{error_msg}"
+    await send_to_channel(text)
+
+async def delete_messages(message_ids: List[int]):
+    if not message_ids:
+        return
+    for mid in message_ids[:]:
         try:
-            async with session.get(API_URL, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                if response.status != 200:
-                    return None, None, None, None
-                data = await response.json()
-                if 'data' not in data or 'result' not in data['data'] or 'outcome' not in data['data']['result']:
-                    return None, None, None, None
-                if 'id' not in data:
-                    return None, None, None, None
-                if data['data'].get('status') != 'Resolved':
-                    return None, None, None, None
-                resultado_id = data['id']
-                outcome = data['data']['result']['outcome']
-                player_score = data['data']['result'].get('playerDice', {}).get('score', 0)
-                banker_score = data['data']['result'].get('bankerDice', {}).get('score', 0)
-                if outcome not in OUTCOME_MAP:
-                    return None, None, None, None
-                resultado = OUTCOME_MAP[outcome]
-                return resultado, resultado_id, player_score, banker_score
+            await bot.delete_message(TELEGRAM_CHANNEL_ID, mid)
         except:
-            return None, None, None, None
-
-def verificar_tendencia(historico, sinal, tamanho_janela=8):
-    if len(historico) < tamanho_janela:
-        return True
-    janela = historico[-tamanho_janela:]
-    contagem = Counter(janela)
-    total = contagem["🔴"] + contagem["🔵"]
-    if total == 0:
-        return True
-    return True
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
-    global ultima_mensagem_monitoramento, aguardando_validacao
-    try:
-        if ultima_mensagem_monitoramento:
-            try:
-                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_monitoramento)
-            except TelegramError:
-                pass
-            ultima_mensagem_monitoramento = None
-        if aguardando_validacao or sinais_ativos:
-            logging.info(f"Sinal bloqueado: aguardando validação ou sinal ativo (ID: {padrao_id})")
-            return False
-        sequencia_str = " ".join(sequencia)
-        mensagem = f""" 🤖 QUILEBA BOT 🤖
-ENTRAR NO: {sinal}
-🛡️ PROTEJA O EMPATE 🟡"""
-        # Adiciona o botão "EMPATES 🟡"
-        keyboard = [[InlineKeyboardButton("EMPATES 🟡", callback_data="mostrar_empates")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, reply_markup=reply_markup)
-        sinais_ativos.append({
-            "sinal": sinal,
-            "padrao_id": padrao_id,
-            "resultado_id": resultado_id,
-            "sequencia": sequencia,
-            "enviado_em": asyncio.get_event_loop().time(),
-            "gale_nivel": 0,
-            "gale_message_id": None
-        })
-        aguardando_validacao = True
-        logging.info(f"Sinal enviado para padrão {padrao_id}: {sinal}")
-        return message.message_id
-    except TelegramError as e:
-        logging.error(f"Erro ao enviar sinal: {e}")
-        raise
-
-async def mostrar_empates(update, context):
-    """Handler para o botão EMPATES 🟡"""
-    try:
-        if not empates_historico:
-            await update.callback_query.answer("Nenhum empate registrado ainda.")
-            return
-        empates_str = "\n".join([f"Empate {i+1}: 🟡 (🔵 {e['player_score']} x 🔴 {e['banker_score']})" for i, e in enumerate(empates_historico)])
-        mensagem = f"📊 Histórico de Empates 🟡\n\n{empates_str}"
-        await update.callback_query.message.reply_text(mensagem)
-        await update.callback_query.answer()
-    except TelegramError as e:
-        logging.error(f"Erro ao mostrar empates: {e}")
-        await update.callback_query.answer("Erro ao exibir empates.")
-
-async def resetar_placar():
-    global placar
-    placar = {
-        "ganhos_seguidos": 0,
-        "ganhos_gale1": 0,
-        "ganhos_gale2": 0,
-        "losses": 0,
-        "empates": 0
-    }
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text="🔄 Placar resetado após 10 erros! Começando do zero.")
-        await enviar_placar()
-    except TelegramError:
-        pass
-
-async def enviar_placar():
-    try:
-        total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2'] + placar['empates']
-        total_sinais = total_acertos + placar['losses']
-        precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
-        precisao = min(precisao, 100.0)
-        mensagem_placar = f"""📊QUILEBA PLACAR📊
-🎯ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
-        await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
-    except TelegramError:
-        pass
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
-    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada, placar, ultimo_padrao_id, aguardando_validacao, empates_historico
-    try:
-        # Armazena empates no histórico
-        if resultado == "🟡":
-            empates_historico.append({"player_score": player_score, "banker_score": banker_score})
-            if len(empates_historico) > 50:  # Limita o histórico para evitar excesso de memória
-                empates_historico.pop(0)
-        for sinal_ativo in sinais_ativos[:]:
-            if sinal_ativo["resultado_id"] != resultado_id:
-                if resultado == sinal_ativo["sinal"] or resultado == "🟡":
-                    if resultado == "🟡":
-                        placar["empates"] += 1
-                    if sinal_ativo["gale_nivel"] == 0:
-                        placar["ganhos_seguidos"] += 1
-                    elif sinal_ativo["gale_nivel"] == 1:
-                        placar["ganhos_gale1"] += 1
-                    else:
-                        placar["ganhos_gale2"] += 1
-                    if sinal_ativo["gale_message_id"]:
-                        try:
-                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                        except TelegramError:
-                            pass
-                    mensagem_validacao = f" ACERTAMOS✅\n🎲 Resultado: 🔵 {player_score} x 🔴 {banker_score}"
-                    await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
-                    await enviar_placar()
-                    ultimo_padrao_id = None
-                    aguardando_validacao = False
-                    sinais_ativos.remove(sinal_ativo)
-                    detecao_pausada = False
-                    logging.info(f"Sinal validado com sucesso para padrão {sinal_ativo['padrao_id']}")
-                else:
-                    if sinal_ativo["gale_nivel"] == 0:
-                        detecao_pausada = True
-                        mensagem_gale = "🔄 FAZER 1º GALE"
-                        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
-                        sinal_ativo["gale_nivel"] = 1
-                        sinal_ativo["gale_message_id"] = message.message_id
-                        sinal_ativo["resultado_id"] = resultado_id
-                    elif sinal_ativo["gale_nivel"] == 1:
-                        detecao_pausada = True
-                        mensagem_gale = "🔄 TAZER 2º GALE"
-                        try:
-                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                        except TelegramError:
-                            pass
-                        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
-                        sinal_ativo["gale_nivel"] = 2
-                        sinal_ativo["gale_message_id"] = message.message_id
-                        sinal_ativo["resultado_id"] = resultado_id
-                    else:
-                        placar["losses"] += 1
-                        if sinal_ativo["gale_message_id"]:
-                            try:
-                                await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                            except TelegramError:
-                                pass
-                        await bot.send_message(chat_id=CHAT_ID, text="❌ ERRAMOS❌")
-                        await enviar_placar()
-                        if placar["losses"] >= 10:
-                            await resetar_placar()
-                        ultimo_padrao_id = None
-                        aguardando_validacao = False
-                        sinais_ativos.remove(sinal_ativo)
-                        detecao_pausada = False
-                        logging.info(f"Sinal perdido para padrão {sinal_ativo['padrao_id']}, validação liberada")
-                ultima_mensagem_monitoramento = None
-            elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
-                if sinal_ativo["gale_message_id"]:
-                    try:
-                        await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                    except TelegramError:
-                        pass
-                ultimo_padrao_id = None
-                aguardando_validacao = False
-                sinais_ativos.remove(sinal_ativo)
-                detecao_pausada = False
-                logging.info(f"Sinal expirado para padrão {sinal_ativo['padrao_id']}, validação liberada")
-        if not sinais_ativos:
-            aguardando_validacao = False
-    except TelegramError:
-        pass
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_monitoramento():
-    global ultima_mensagem_monitoramento
-    while True:
-        try:
-            if not sinais_ativos:
-                if ultima_mensagem_monitoramento:
-                    try:
-                        await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_monitoramento)
-                    except TelegramError:
-                        pass
-                message = await bot.send_message(chat_id=CHAT_ID, text="🔎MONITORANDO A MESA…")
-                ultima_mensagem_monitoramento = message.message_id
-            await asyncio.sleep(15)
-        except TelegramError:
-            await asyncio.sleep(15)
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_relatorio():
-    while True:
-        try:
-            total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2'] + placar['empates']
-            total_sinais = total_acertos + placar['losses']
-            precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
-            precisao = min(precisao, 100.0)
-            msg = f"""📊 QUILEBA PLACAR 📊
-🎯ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
-            await bot.send_message(chat_id=CHAT_ID, text=msg)
-        except TelegramError:
             pass
-        await asyncio.sleep(3600)
 
-async def enviar_erro_telegram(erro_msg):
+def should_reset_placar() -> bool:
+    now = datetime.now(ANGOLA_TZ)
+    current_date = now.date()
+    if state["last_reset_date"] is None or state["last_reset_date"] != current_date:
+        state["last_reset_date"] = current_date
+        return True
+    if state["total_losses"] >= 10:
+        return True
+    return False
+
+def reset_placar_if_needed():
+    if should_reset_placar():
+        state["total_greens"] = 0
+        state["greens_sem_gale"] = 0
+        state["greens_gale_1"] = 0
+        state["greens_gale_2"] = 0
+        state["total_empates"] = 0
+        state["total_losses"] = 0
+        state["greens_seguidos"] = 0
+        logger.info("🔄 Placar resetado (diário ou por 10 losses)")
+
+def calcular_acertividade() -> str:
+    total_decisoes = state["total_greens"] + state["total_losses"]
+    if total_decisoes == 0:
+        return "—"
+    perc = (state["total_greens"] / total_decisoes) * 100
+    return f"{perc:.1f}%"
+
+def format_placar() -> str:
+    acert = calcular_acertividade()
+    return (
+        "🏆 <b>RESUMO</b> 🏆\n"
+        f"✅ Ganhos sem gale:    <b>{state['greens_sem_gale']}</b>\n"
+        f"🔄 Ganhos gale 1:       <b>{state['greens_gale_1']}</b>\n"
+        f"🔄 Ganhos gale 2:       <b>{state['greens_gale_2']}</b>\n"
+        f"🤝 Total empates:       <b>{state['total_empates']}</b>\n"
+        f"⛔ Losses reais:        <b>{state['total_losses']}</b>\n"
+        f"─────────────────────────────\n"
+        f"🎯 Total greens:        <b>{state['total_greens']}</b>\n"
+        f"🎯 Acertividade:        <b>{acert}</b>"
+    )
+
+def format_analise_text() -> str:
+    return (
+        "🎲 <b>ANALISANDO...</b> 🎲\n\n"
+        "<i>Aguarde o próximo sinal</i>"
+    )
+
+async def refresh_analise_message():
+    now = datetime.now().timestamp()
+    if (now - state["last_analise_refresh"]) < ANALISE_REFRESH_INTERVAL:
+        return
+
+    await delete_analise_message()
+    msg_id = await send_to_channel(format_analise_text())
+    if msg_id:
+        state["analise_message_id"] = msg_id
+        state["last_analise_refresh"] = now
+
+async def delete_analise_message():
+    if state["analise_message_id"] is not None:
+        await delete_messages([state["analise_message_id"]])
+        state["analise_message_id"] = None
+
+async def fetch_api(session: aiohttp.ClientSession) -> Optional[Dict]:
     try:
-        await bot.send_message(chat_id=CHAT_ID, text=f"❌ Erro detectado: {erro_msg}")
-    except TelegramError:
-        pass
+        async with session.get(API_URL, headers=HEADERS, timeout=12) as resp:
+            if resp.status != 200:
+                await send_error_to_channel(f"API retornou status {resp.status}")
+                return None
+            return await resp.json()
+    except Exception as e:
+        await send_error_to_channel(f"Erro na API: {str(e)}")
+        return None
+
+async def update_history_from_api(session):
+    reset_placar_if_needed()
+    data = await fetch_api(session)
+    if not data:
+        return
+    try:
+        if "data" in data:
+            data = data["data"]
+        round_id = data.get("id")
+        outcome_raw = (data.get("result") or {}).get("outcome")
+        player_dice = None
+        banker_dice = None
+
+        result = data.get("result") or {}
+        if isinstance(result, dict):
+            pl = result.get("player") or result.get("playerDice") or {}
+            bk = result.get("banker") or result.get("bankerDice") or {}
+            for k in ("score", "sum", "total", "points"):
+                if k in pl: player_dice = pl[k]
+                if k in bk: banker_dice = bk[k]
+
+        if not round_id or not outcome_raw:
+            return
+
+        outcome = OUTCOME_MAP.get(outcome_raw)
+        if not outcome:
+            s = str(outcome_raw).lower()
+            if "player" in s: outcome = "🔵"
+            elif "banker" in s: outcome = "🔴"
+            elif any(x in s for x in ["tie", "empate", "draw"]): outcome = "🟡"
+
+        if outcome and state["last_round_id"] != round_id:
+            state["last_round_id"] = round_id
+            state["history"].append({
+                "outcome": outcome,
+                "player_score": player_dice,
+                "banker_score": banker_dice
+            })
+            state["player_score_last"] = player_dice
+            state["banker_score_last"] = banker_dice
+            if len(state["history"]) > 200:
+                state["history"].pop(0)
+            logger.info(f"Novo resultado → {outcome} | round {round_id}")
+            state["signal_cooldown"] = False
+    except Exception as e:
+        await send_error_to_channel(f"Erro processando API: {str(e)}")
+
+def oposto(cor: str) -> str:
+    return "🔵" if cor == "🔴" else "🔴"
+
+def gerar_sinal_estrategia(history: List[Dict[str, Any]], player_score=None, banker_score=None):
+    if len(history) < 5:  # Mínimo para sequências de 4 +1
+        return None, None
+
+    def outcome_to_letter(o: str) -> str:
+        if o == "🔵": return 'P'
+        if o == "🔴": return 'B'
+        if o == "🟡": return 'T'
+        return '?'
+
+    hist_letters = [outcome_to_letter(h["outcome"]) for h in history]
+
+    # Parâmetros ajustados: sequência para match = 4 (prever o 5º)
+    k = 4  # Tamanho da sequência "se formando"
+    recent_window = 15 + k  # Buscar nos últimos 15 + k para evitar overlap com atual
+
+    if len(hist_letters) < recent_window:
+        recent_hist = hist_letters
+    else:
+        recent_hist = hist_letters[-recent_window:]
+
+    if len(hist_letters) < k + 1:
+        return None, None
+
+    current_seq = hist_letters[-k:]
+    current_str = ''.join(current_seq)
+    flipped_current_str = ''.join({'P': 'B', 'B': 'P', 'T': 'T'}.get(c, c) for c in current_seq)
+
+    predictions = []
+
+    # Buscar matches nos últimos rounds (exceto os últimos k atuais)
+    for i in range(len(recent_hist) - k - 1):
+        past_seq = ''.join(recent_hist[i:i + k])
+        if past_seq == current_str:
+            next_out = recent_hist[i + k]
+            predictions.append(next_out)
+        elif past_seq == flipped_current_str:
+            next_out = recent_hist[i + k]
+            flipped_next = {'P': 'B', 'B': 'P', 'T': 'T'}.get(next_out, next_out)
+            predictions.append(flipped_next)
+
+    if not predictions:
+        return None, None
+
+    cnt = Counter(predictions)
+    most_common, count = cnt.most_common(1)[0]
+
+    # Requer pelo menos 1 match e maioria >=50%
+    if count / len(predictions) < 0.5:
+        return None, None
+
+    letter_to_outcome = {'P': "🔵", 'B': "🔴", 'T': "🟡"}
+    predicted = letter_to_outcome.get(most_common)
+
+    if predicted == "🟡":  # Não prever empate
+        return None, None
+
+    return ("Correspondência Histórica de Sequência Recente", predicted)
+
+def main_entry_text(color: str) -> str:
+    cor_nome = "AZUL" if color == "🔵" else "VERMELHO"
+    emoji = color
+    return (
+        f"🎲 <b>CLEVER_M</b> 🎲\n"
+        f"🧠 APOSTA EM: <b>{emoji} {cor_nome}</b>\n"
+        f"🛡️ Proteja o TIE <b>🟡</b>\n"
+        f"<b>FAZER ATÉ 2 GALE</b>\n"
+        f"🤑 <b>VAI ENTRAR DINHEIRO</b> 🤑"
+    )
+
+def green_text(greens: int) -> str:
+    return (
+        f"🤡 <b>ENTROU DINHEIRO</b> 🤡\n"
+        f"🎲 <b>MAIS FOCO E MENOS GANÂNCIA</b> 🎲\n"
+        f"🔥 <b>CLEVER É O LÍDER</b> 🔥"
+    )
+
+async def send_gale_warning(level: int):
+    if level not in (1, 2):
+        return
+    text = f"🔄 <b>GALE {level}</b> 🔄\nContinuar na mesma cor!"
+    msg_id = await send_to_channel(text)
+    if msg_id:
+        state["martingale_message_ids"].append(msg_id)
+
+async def clear_gale_messages():
+    await delete_messages(state["martingale_message_ids"])
+    state["martingale_message_ids"] = []
+
+async def resolve_after_result():
+    if not state.get("waiting_for_result", False) or not state.get("last_signal_color"):
+        return
+
+    if state["last_result_round_id"] == state["last_round_id"]:
+        return
+
+    if not state["history"]:
+        return
+
+    last_outcome = state["history"][-1]["outcome"]
+
+    if state["last_signal_round_id"] == state["last_round_id"]:
+        return
+
+    state["last_result_round_id"] = state["last_round_id"]
+    target = state["last_signal_color"]
+
+    acertou = (last_outcome == target)
+    is_tie = (last_outcome == "🟡")
+
+    if acertou:
+        # Acerto real (cor correta) → incrementa a categoria correspondente
+        state["total_greens"] += 1
+        state["greens_seguidos"] += 1
+
+        if state["martingale_count"] == 0:
+            state["greens_sem_gale"] += 1
+        elif state["martingale_count"] == 1:
+            state["greens_gale_1"] += 1
+        elif state["martingale_count"] == 2:
+            state["greens_gale_2"] += 1
+
+        await send_to_channel(green_text(state["greens_seguidos"]))
+        await send_to_channel(format_placar())
+
+        seq_text = f"ESTAMOS NUMA SEQUÊNCIA DE {state['greens_seguidos']} GANHOS SEGUIDOS 🔥"
+        await send_to_channel(seq_text)
+
+        await clear_gale_messages()
+
+        state.update({
+            "waiting_for_result": False,
+            "last_signal_color": None,
+            "martingale_count": 0,
+            "entrada_message_id": None,
+            "last_signal_pattern": None,
+            "last_signal_sequence": None,
+            "last_signal_round_id": None,
+            "signal_cooldown": True
+        })
+        return
+
+    if is_tie:
+        # Empate → só aumenta empates e total greens (não entra nas categorias de gale/sem gale)
+        state["total_greens"] += 1
+        state["total_empates"] += 1
+        state["greens_seguidos"] += 1
+
+        await send_to_channel(green_text(state["greens_seguidos"]))
+        await send_to_channel(format_placar())
+
+        seq_text = f"ESTAMOS NUMA SEQUÊNCIA DE {state['greens_seguidos']} GANHOS SEGUIDOS 🔥"
+        await send_to_channel(seq_text)
+
+        await clear_gale_messages()
+
+        state.update({
+            "waiting_for_result": False,
+            "last_signal_color": None,
+            "martingale_count": 0,
+            "entrada_message_id": None,
+            "last_signal_pattern": None,
+            "last_signal_sequence": None,
+            "last_signal_round_id": None,
+            "signal_cooldown": True
+        })
+        return
+
+    # Perda real nessa tentativa
+    state["martingale_count"] += 1
+
+    if state["martingale_count"] == 1:
+        await send_gale_warning(1)
+    elif state["martingale_count"] == 2:
+        await send_gale_warning(2)
+
+    if state["martingale_count"] >= 3:
+        state["greens_seguidos"] = 0
+        state["total_losses"] += 1
+
+        await send_to_channel("🟥 <b>LOSS 🟥</b>")
+        await send_to_channel(format_placar())
+
+        await clear_gale_messages()
+
+        state.update({
+            "waiting_for_result": False,
+            "last_signal_color": None,
+            "martingale_count": 0,
+            "entrada_message_id": None,
+            "last_signal_pattern": None,
+            "last_signal_sequence": None,
+            "last_signal_round_id": None,
+            "signal_cooldown": True
+        })
+
+    reset_placar_if_needed()
+    await refresh_analise_message()
+
+async def try_send_signal():
+    if state["waiting_for_result"]:
+        await delete_analise_message()
+        return
+
+    if state["signal_cooldown"]:
+        await refresh_analise_message()
+        return
+
+    if len(state["history"]) < 2:
+        await refresh_analise_message()
+        return
+
+    padrao, cor = gerar_sinal_estrategia(
+        state["history"],
+        state.get("player_score_last"),
+        state.get("banker_score_last")
+    )
+
+    if not cor:
+        await refresh_analise_message()
+        return
+
+    def outcome_to_letter(o: str) -> str:
+        if o == "🔵": return 'P'
+        if o == "🔴": return 'B'
+        if o == "🟡": return 'T'
+        return '?'
+
+    seq_str = "".join([outcome_to_letter(h["outcome"]) for h in state["history"][-6:]])
+
+    if state["last_signal_pattern"] == padrao and state["last_signal_sequence"] == seq_str:
+        await refresh_analise_message()
+        return
+
+    await delete_analise_message()
+    state["martingale_message_ids"] = []
+
+    msg_id = await send_to_channel(main_entry_text(cor))
+    if msg_id:
+        state["entrada_message_id"] = msg_id
+        state["waiting_for_result"] = True
+        state["last_signal_color"] = cor
+        state["martingale_count"] = 0
+        state["last_signal_pattern"] = padrao
+        state["last_signal_sequence"] = seq_str
+        state["last_signal_round_id"] = state["last_round_id"]
+        logger.info(f"Sinal enviado: {cor} | Estratégia: {padrao}")
+
+async def api_worker():
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                await update_history_from_api(session)
+                await resolve_after_result()
+            except Exception as e:
+                logger.exception("Erro no api_worker")
+                await send_error_to_channel(f"Erro grave no loop da API:\n<code>{str(e)}</code>")
+                await asyncio.sleep(10)
+            await asyncio.sleep(API_POLL_INTERVAL)
+
+async def scheduler_worker():
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await refresh_analise_message()
+            await try_send_signal()
+        except Exception as e:
+            logger.exception("Erro no scheduler")
+            await send_error_to_channel(f"Erro no envio de sinais:\n<code>{str(e)}</code>")
+        await asyncio.sleep(SIGNAL_CYCLE_INTERVAL)
 
 async def main():
-    global historico, ultimo_padrao_id, ultimo_resultado_id, rodadas_desde_erro, detecao_pausada, aguardando_validacao
-    # Registrar o handler para o botão de empates
-    application.add_handler(CallbackQueryHandler(mostrar_empates, pattern="mostrar_empates"))
-    # Iniciar o polling da aplicação
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    asyncio.create_task(enviar_relatorio())
-    asyncio.create_task(enviar_monitoramento())
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text="🚀 Bot iniciado com sucesso!")
-    except TelegramError:
-        pass
-    while True:
-        try:
-            resultado, resultado_id, player_score, banker_score = await fetch_resultado()
-            if not resultado or not resultado_id:
-                await asyncio.sleep(2)
-                continue
-            if resultado_id == ultimo_resultado_id:
-                await asyncio.sleep(2)
-                continue
-            ultimo_resultado_id = resultado_id
-            historico.append(resultado)
-            if len(historico) > 50:
-                historico.pop(0)
-            await enviar_resultado(resultado, player_score, banker_score, resultado_id)
-            if not detecao_pausada and not aguardando_validacao and not sinais_ativos:
-                for padrao in PADROES:
-                    seq_len = len(padrao["sequencia"])
-                    if len(historico) >= seq_len:
-                        if historico[-seq_len:] == padrao["sequencia"] and padrao["id"] != ultimo_padrao_id:
-                            if verificar_tendencia(historico, padrao["sinal"]):
-                                enviado = await enviar_sinal(padrao["sinal"], padrao["id"], resultado_id, padrao["sequencia"])
-                                if enviado:
-                                    ultimo_padrao_id = padrao["id"]
-                                    break
-            await asyncio.sleep(2)
-        except Exception as e:
-            await enviar_erro_telegram(str(e))
-            await asyncio.sleep(5)
+    logger.info("🤖 Bot iniciado...")
+    await send_to_channel("🤖 Bot iniciado - procurando sinais...")
+    await asyncio.gather(api_worker(), scheduler_worker())
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Bot encerrado pelo usuário")
+        logger.info("Bot parado pelo usuário")
     except Exception as e:
-        logging.error(f"Erro fatal no bot: {e}")
-        asyncio.run(enviar_erro_telegram(f"Erro fatal no bot: {e}"))
+        logger.critical("Erro fatal", exc_info=True)
+        try:
+            asyncio.run(send_error_to_channel(f"ERRO FATAL: {str(e)}"))
+        except:
+            pass
