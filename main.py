@@ -35,9 +35,8 @@ OUTCOME_MAP = {
     "🟡": "🟡",
 }
 
-API_POLL_INTERVAL = 3
-SIGNAL_CYCLE_INTERVAL = 4
-ANALISE_REFRESH_INTERVAL = 12
+API_POLL_INTERVAL = 5  # Aumentado para evitar consultas excessivas e sincronizar melhor
+SIGNAL_COOLDOWN_DURATION = 10  # Cooldown após envio de sinal ou resultado (em segundos)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,13 +64,14 @@ state: Dict[str, Any] = {
     "last_signal_pattern": None,
     "last_signal_sequence": None,
     "last_signal_round_id": None,
-    "signal_cooldown": False,
+    "signal_cooldown_until": 0.0,  # Timestamp até quando cooldown ativo
     "analise_message_id": None,
     "last_reset_date": None,
     "last_analise_refresh": 0.0,
     "last_result_round_id": None,
     "player_score_last": None,
     "banker_score_last": None,
+    "new_result_added": False,  # Flag para indicar novo resultado
 }
 
 async def send_to_channel(text: str, parse_mode="HTML") -> Optional[int]:
@@ -175,6 +175,9 @@ async def update_history_from_api(session):
             return
 
         outcome_raw = (data.get("result") or {}).get("outcome")
+        if not outcome_raw:  # Ignora se round em andamento (sem outcome)
+            return
+
         player_dice = banker_dice = None
 
         result = data.get("result") or {}
@@ -199,14 +202,13 @@ async def update_history_from_api(session):
                 state["banker_score_last"] = banker_dice
             if len(state["history"]) > 200:
                 state["history"].pop(0)
-            logger.info(f"Resultado: {outcome} (round {round_id})")
-            state["signal_cooldown"] = False
+            logger.info(f"Resultado novo: {outcome} (round {round_id})")
+            state["new_result_added"] = True  # Flag para indicar novo resultado
+            state["signal_cooldown_until"] = datetime.now().timestamp()  # Reset cooldown
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
 
-# ───────────────────────────────────────────────
 # ESTRATÉGIAS
-# ───────────────────────────────────────────────
 
 def oposto(cor: str) -> str:
     return "🔵" if cor == "🔴" else "🔴"
@@ -226,7 +228,7 @@ def estrategia_maioria_recente(hist: List[str]):
 def estrategia_repeticao(hist: List[str]):
     if len(hist) >= 3 and hist[-1] == hist[-2] == hist[-3] and hist[-1] in ("🔵", "🔴"):
         return ("3x repetição → reversão", oposto(hist[-1]))
-    if len(hist) >= 2 and hist[-1] == hist[-2] and hist[-1] in ("🔵", "🔴"):
+    if len(hist) >= 2 and hist[-2] == hist[-1] and hist[-1] in ("🔵", "🔴"):
         return ("2x repetição", hist[-1])
     return None
 
@@ -325,6 +327,9 @@ async def resolve_after_result():
     if not state["history"]:
         return
 
+    if state["last_signal_round_id"] >= state["last_round_id"]:
+        return  # Evita resolver se round não avançou
+
     last_outcome = state["history"][-1]
     state["last_result_round_id"] = state["last_round_id"]
 
@@ -356,7 +361,7 @@ async def resolve_after_result():
             "last_signal_pattern": None,
             "last_signal_sequence": None,
             "last_signal_round_id": None,
-            "signal_cooldown": True
+            "signal_cooldown_until": datetime.now().timestamp() + SIGNAL_COOLDOWN_DURATION
         })
         return
 
@@ -381,22 +386,28 @@ async def resolve_after_result():
             "last_signal_pattern": None,
             "last_signal_sequence": None,
             "last_signal_round_id": None,
-            "signal_cooldown": True
+            "signal_cooldown_until": datetime.now().timestamp() + SIGNAL_COOLDOWN_DURATION
         })
         reset_placar_if_needed()
 
     await refresh_analise_message()
 
 async def try_send_signal():
+    now = datetime.now().timestamp()
     if state["waiting_for_result"]:
         await delete_analise_message()
         return
-    if state["signal_cooldown"]:
+    if now < state["signal_cooldown_until"]:
         await refresh_analise_message()
         return
     if len(state["history"]) < 3:
         await refresh_analise_message()
         return
+    if not state["new_result_added"]:
+        await refresh_analise_message()
+        return
+
+    state["new_result_added"] = False  # Reset flag
 
     padrao, cor = gerar_sinal_estrategia(
         state["history"],
@@ -425,7 +436,8 @@ async def try_send_signal():
         state["last_signal_pattern"] = padrao
         state["last_signal_sequence"] = seq
         state["last_signal_round_id"] = state["last_round_id"]
-        logger.info(f"Sinal → {cor}  ({padrao})")
+        state["signal_cooldown_until"] = now + SIGNAL_COOLDOWN_DURATION
+        logger.info(f"Sinal enviado → {cor} ({padrao})")
 
 async def api_worker():
     async with aiohttp.ClientSession() as session:
@@ -433,24 +445,15 @@ async def api_worker():
             try:
                 await update_history_from_api(session)
                 await resolve_after_result()
+                await try_send_signal()  # Chama envio após update e resolve
             except Exception as e:
-                logger.debug(f"Erro api_worker: {e}")
+                logger.debug(f"Erro loop principal: {e}")
             await asyncio.sleep(API_POLL_INTERVAL)
-
-async def scheduler_worker():
-    await asyncio.sleep(2)
-    while True:
-        try:
-            await refresh_analise_message()
-            await try_send_signal()
-        except Exception as e:
-            logger.debug(f"Erro scheduler: {e}")
-        await asyncio.sleep(SIGNAL_CYCLE_INTERVAL)
 
 async def main():
     logger.info("Bot iniciado...")
-    await send_to_channel("🤖 Bot online – procurando sinais rápidos")
-    await asyncio.gather(api_worker(), scheduler_worker())
+    await send_to_channel("🤖 Bot online – sinais em tempo real corrigidos")
+    await api_worker()  # Unico loop para sincronia
 
 if __name__ == "__main__":
     try:
