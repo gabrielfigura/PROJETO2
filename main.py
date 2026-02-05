@@ -128,9 +128,7 @@ def format_placar() -> str:
         f"✅ Sem gale: <b>{state['greens_sem_gale']}</b>\n"
         f"🔄 Gale 1: <b>{state['greens_gale_1']}</b>\n"
         f"🔄 Gale 2: <b>{state['greens_gale_2']}</b>\n"
-        f"🤝 Empates: <b>{state['total_empates']}</b>\n"
         f"⛔ Losses: <b>{state['total_losses']}</b>\n"
-        "─────────────────\n"
         f"🎯 Greens: <b>{state['total_greens']}</b>  |  {acert}"
     )
 
