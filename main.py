@@ -35,8 +35,10 @@ OUTCOME_MAP = {
     "🟡": "🟡",
 }
 
-API_POLL_INTERVAL = 5  # Aumentado para evitar consultas excessivas e sincronizar melhor
-SIGNAL_COOLDOWN_DURATION = 10  # Cooldown após envio de sinal ou resultado (em segundos)
+API_POLL_INTERVAL = 4.2          # Ajustado para tentar capturar mais rápido
+SIGNAL_COOLDOWN_DURATION = 9     # um pouco menor que antes
+
+GREEN_STICKER_ID = "CAACAgQAAxkBAAMCaanfUxV0k3upwRhvlpq9XyODGX4AAvAbAAL92lFROjONnjCocw86BA"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,14 +66,14 @@ state: Dict[str, Any] = {
     "last_signal_pattern": None,
     "last_signal_sequence": None,
     "last_signal_round_id": None,
-    "signal_cooldown_until": 0.0,  # Timestamp até quando cooldown ativo
+    "signal_cooldown_until": 0.0,
     "analise_message_id": None,
     "last_reset_date": None,
     "last_analise_refresh": 0.0,
     "last_result_round_id": None,
     "player_score_last": None,
     "banker_score_last": None,
-    "new_result_added": False,  # Flag para indicar novo resultado
+    "new_result_added": False,
 }
 
 async def send_to_channel(text: str, parse_mode="HTML") -> Optional[int]:
@@ -84,7 +86,18 @@ async def send_to_channel(text: str, parse_mode="HTML") -> Optional[int]:
         )
         return msg.message_id
     except Exception as e:
-        logger.error(f"Erro ao enviar: {e}")
+        logger.error(f"Erro ao enviar texto: {e}")
+        return None
+
+async def send_sticker_to_channel(sticker_id: str) -> Optional[int]:
+    try:
+        msg = await bot.send_sticker(
+            chat_id=TELEGRAM_CHANNEL_ID,
+            sticker=sticker_id
+        )
+        return msg.message_id
+    except Exception as e:
+        logger.error(f"Erro ao enviar sticker: {e}")
         return None
 
 async def send_error_to_channel(error_msg: str):
@@ -136,14 +149,10 @@ def format_analise_text() -> str:
     return "🎲 <b>ANALISANDO...</b> 🎲\n<i>Aguarde sinal</i>"
 
 async def refresh_analise_message():
-    now = datetime.now().timestamp()
-    if now - state["last_analise_refresh"] < ANALISE_REFRESH_INTERVAL:
-        return
     await delete_analise_message()
     msg_id = await send_to_channel(format_analise_text())
     if msg_id:
         state["analise_message_id"] = msg_id
-        state["last_analise_refresh"] = now
 
 async def delete_analise_message():
     if state["analise_message_id"] is not None:
@@ -152,7 +161,7 @@ async def delete_analise_message():
 
 async def fetch_api(session: aiohttp.ClientSession) -> Optional[Dict]:
     try:
-        async with session.get(API_URL, headers=HEADERS, timeout=8) as resp:
+        async with session.get(API_URL, headers=HEADERS, timeout=7) as resp:
             if resp.status == 200:
                 return await resp.json()
             return None
@@ -173,11 +182,10 @@ async def update_history_from_api(session):
             return
 
         outcome_raw = (data.get("result") or {}).get("outcome")
-        if not outcome_raw:  # Ignora se round em andamento (sem outcome)
+        if not outcome_raw:  # round ainda em andamento
             return
 
         player_dice = banker_dice = None
-
         result = data.get("result") or {}
         pl = result.get("player") or result.get("playerDice") or {}
         bk = result.get("banker") or result.get("bankerDice") or {}
@@ -201,12 +209,14 @@ async def update_history_from_api(session):
             if len(state["history"]) > 200:
                 state["history"].pop(0)
             logger.info(f"Resultado novo: {outcome} (round {round_id})")
-            state["new_result_added"] = True  # Flag para indicar novo resultado
-            state["signal_cooldown_until"] = datetime.now().timestamp()  # Reset cooldown
+            state["new_result_added"] = True
+            state["signal_cooldown_until"] = datetime.now().timestamp() + 1.5  # pequeno buffer
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
 
-# ESTRATÉGIAS
+# ────────────────────────────────────────
+#  ESTRATÉGIAS (mantidas iguais)
+# ────────────────────────────────────────
 
 def oposto(cor: str) -> str:
     return "🔵" if cor == "🔴" else "🔴"
@@ -255,7 +265,6 @@ def gerar_sinal_estrategia(history: List[str], player_score=None, banker_score=N
     if len(history) < 3:
         return None, None
 
-    # Estratégia prioritária e rápida
     res = estrategia_maioria_recente(history)
     if res:
         return res
@@ -263,7 +272,6 @@ def gerar_sinal_estrategia(history: List[str], player_score=None, banker_score=N
     votos = {"🔵": 0.0, "🔴": 0.0}
     melhor_nome = None
 
-    # Estratégias baseadas em histórico
     for func, peso in [
         (estrategia_repeticao, 2.5),
         (estrategia_alternancia, 2.0),
@@ -275,7 +283,6 @@ def gerar_sinal_estrategia(history: List[str], player_score=None, banker_score=N
             if melhor_nome is None:
                 melhor_nome = nome
 
-    # Paridade (tratada separadamente)
     res_par = estrategia_paridade(player_score, banker_score)
     if res_par:
         nome_par, cor_par = res_par
@@ -300,11 +307,6 @@ def main_entry_text(color: str) -> str:
         f"PROTEJA O TIE 🟡"
     )
 
-def green_text(p: Optional[int], b: Optional[int]) -> str:
-    ps = p if p is not None else "?"
-    bs = b if b is not None else "?"
-    return f"💰 ENTROU DINHEIRO 💰\n🔵 = {ps}   🔴 = {bs}"
-
 async def send_gale_warning(level: int):
     if level not in (1, 2):
         return
@@ -326,7 +328,7 @@ async def resolve_after_result():
         return
 
     if state["last_signal_round_id"] >= state["last_round_id"]:
-        return  # Evita resolver se round não avançou
+        return
 
     last_outcome = state["history"][-1]
     state["last_result_round_id"] = state["last_round_id"]
@@ -345,7 +347,9 @@ async def resolve_after_result():
         elif state["martingale_count"] == 1: state["greens_gale_1"] += 1
         elif state["martingale_count"] == 2: state["greens_gale_2"] += 1
 
-        await send_to_channel(green_text(p, b))
+        # Substituímos o texto por sticker
+        await send_sticker_to_channel(GREEN_STICKER_ID)
+        
         await send_to_channel(format_placar())
         await send_to_channel(f"SEQUÊNCIA: {state['greens_seguidos']} greens 🔥")
 
@@ -396,16 +400,13 @@ async def try_send_signal():
         await delete_analise_message()
         return
     if now < state["signal_cooldown_until"]:
-        await refresh_analise_message()
         return
     if len(state["history"]) < 3:
-        await refresh_analise_message()
         return
     if not state["new_result_added"]:
-        await refresh_analise_message()
         return
 
-    state["new_result_added"] = False  # Reset flag
+    state["new_result_added"] = False
 
     padrao, cor = gerar_sinal_estrategia(
         state["history"],
@@ -442,16 +443,17 @@ async def api_worker():
         while True:
             try:
                 await update_history_from_api(session)
+                await asyncio.sleep(0.6)           # pequeno delay para ajudar na sincronia
                 await resolve_after_result()
-                await try_send_signal()  # Chama envio após update e resolve
+                await try_send_signal()
             except Exception as e:
                 logger.debug(f"Erro loop principal: {e}")
             await asyncio.sleep(API_POLL_INTERVAL)
 
 async def main():
     logger.info("Bot iniciado...")
-    await send_to_channel("🤖 Bot online – sinais em tempo real corrigidos")
-    await api_worker()  # Unico loop para sincronia
+    await send_to_channel("🤖 Bot online – validação por sticker + envio mais antecipado")
+    await api_worker()
 
 if __name__ == "__main__":
     try:
