@@ -16,7 +16,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7592335545:AAGjbyAZYG33LC42xvCDOaxBgrM-jXW5XXQ")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1002629616421")  # MUDE SE NECESSÁRIO
 
-API_URL = "https://api-cs.casino.org/svc-evolution-game-events/api/bacbo/latest"
+API_URL = "https://api.signals-house.com/validate/results?tableId=2&lastResult=13343863"
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
