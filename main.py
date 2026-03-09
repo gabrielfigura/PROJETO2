@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configurações
-
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7525707247:AAHLVwSdes_UlaVQ5TUo72q-4mMZXE8_lfE")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003564529662")
 
@@ -207,7 +206,6 @@ async def update_history_from_api(session):
                     state["history"].pop(0)
                 logger.info(f"Resultado novo: {outcome} (round {round_id}, score={score})")
                 state["new_result_added"] = True
-                # CORRIGIDO: removido cooldown de 1.5s aqui para enviar sinal imediatamente
 
         elif isinstance(items, dict):
             round_id = items.get("id")
@@ -247,7 +245,6 @@ async def update_history_from_api(session):
                     state["history"].pop(0)
                 logger.info(f"Resultado novo: {outcome} (round {round_id})")
                 state["new_result_added"] = True
-                # CORRIGIDO: removido cooldown de 1.5s aqui para enviar sinal imediatamente
 
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
@@ -382,9 +379,8 @@ async def resolve_after_result():
         elif state["martingale_count"] == 1: state["greens_gale_1"] += 1
         elif state["martingale_count"] == 2: state["greens_gale_2"] += 1
 
+        # Apenas o sticker personalizado (sem texto)
         await send_sticker_to_channel(GREEN_STICKER_ID)
-        await send_to_channel(format_placar())
-        await send_to_channel(f"SEQUÊNCIA: {state['greens_seguidos']} greens 🔥")
         await clear_gale_messages()
 
         state.update({
@@ -405,11 +401,11 @@ async def resolve_after_result():
     elif state["martingale_count"] == 2:
         await send_gale_warning(2)
 
-    if state["martingale_count"] >= 3:
+    # Loss após o segundo gale perdido
+    if state["martingale_count"] >= 2:
         state["greens_seguidos"] = 0
         state["total_losses"] += 1
         await send_to_channel("🟥 <b>LOSS</b> 🟥")
-        await send_to_channel(format_placar())
         await clear_gale_messages()
 
         state.update({
@@ -458,7 +454,18 @@ async def try_send_signal():
     await delete_analise_message()
     state["martingale_message_ids"] = []
 
-    msg_id = await send_to_channel(main_entry_text(cor))
+    # Mensagem do sinal + placar + sequência atualizados
+    sinal_texto = (
+        f"🎲 ENTRADA DO CLEVER 🎲\n"
+        f"APOSTA NA COR: {cor}\n"
+        f"PROTEJA O TIE 🟡\n"
+        "____________________\n\n"
+        f"{format_placar()}\n"
+        "____________________\n"
+        f"SEQUÊNCIA: {state['greens_seguidos']} greens 🔥"
+    )
+
+    msg_id = await send_to_channel(sinal_texto)
     if msg_id:
         state["entrada_message_id"] = msg_id
         state["waiting_for_result"] = True
@@ -475,7 +482,6 @@ async def api_worker():
         while True:
             try:
                 await update_history_from_api(session)
-                # CORRIGIDO: removido sleep(0.6) para processar imediatamente
                 await resolve_after_result()
                 await try_send_signal()
             except Exception as e:
