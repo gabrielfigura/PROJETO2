@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configurações
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7592335545:AAGjbyAZYG33LC42xvCDOaxBgrM-jXW5XXQ")
-TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1002629616421")  # MUDE SE NECESSÁRIO
 
-API_URL = "https://api-cs.casino.org/svc-evolution-game-events/api/bacbo/latest"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7525707247:AAHLVwSdes_UlaVQ5TUo72q-4mMZXE8_lfE")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003564529662")
+
+API_URL = "https://api.signals-house.com/validate/results?tableId=2&lastResult=13343863"
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -30,13 +31,15 @@ OUTCOME_MAP = {
     "PlayerWon": "🔵",
     "BankerWon": "🔴",
     "Tie": "🟡",
+    "Player": "🔵",
+    "Banker": "🔴",
     "🔵": "🔵",
     "🔴": "🔴",
     "🟡": "🟡",
 }
 
-API_POLL_INTERVAL = 4.2          # Ajustado para tentar capturar mais rápido
-SIGNAL_COOLDOWN_DURATION = 9     # um pouco menor que antes
+API_POLL_INTERVAL = 2.0
+SIGNAL_COOLDOWN_DURATION = 9
 
 GREEN_STICKER_ID = "CAACAgQAAxkBAAMCaanfUxV0k3upwRhvlpq9XyODGX4AAvAbAAL92lFROjONnjCocw86BA"
 
@@ -175,47 +178,82 @@ async def update_history_from_api(session):
         return
 
     try:
-        if "data" in data:
-            data = data["data"]
-        round_id = data.get("id")
-        if not round_id:
-            return
+        items = data.get("data", [])
+        if isinstance(items, list) and len(items) > 0:
+            latest = items[0]
+            round_id = latest.get("id")
+            if not round_id:
+                return
 
-        outcome_raw = (data.get("result") or {}).get("outcome")
-        if not outcome_raw:  # round ainda em andamento
-            return
+            outcome_raw = latest.get("result")
+            if not outcome_raw:
+                return
 
-        player_dice = banker_dice = None
-        result = data.get("result") or {}
-        pl = result.get("player") or result.get("playerDice") or {}
-        bk = result.get("banker") or result.get("bankerDice") or {}
-        for k in ("score", "sum", "total", "points"):
-            if k in pl: player_dice = pl[k]
-            if k in bk: banker_dice = bk[k]
+            score = latest.get("score")
 
-        outcome = OUTCOME_MAP.get(outcome_raw)
-        if not outcome:
-            s = str(outcome_raw or "").lower()
-            if "player" in s: outcome = "🔵"
-            elif "banker" in s: outcome = "🔴"
-            elif any(x in s for x in ["tie", "empate", "draw"]): outcome = "🟡"
+            outcome = OUTCOME_MAP.get(outcome_raw)
+            if not outcome:
+                s = str(outcome_raw or "").lower()
+                if "player" in s: outcome = "🔵"
+                elif "banker" in s: outcome = "🔴"
+                elif any(x in s for x in ["tie", "empate", "draw"]): outcome = "🟡"
 
-        if outcome and state["last_round_id"] != round_id:
-            state["last_round_id"] = round_id
-            state["history"].append(outcome)
-            if player_dice is not None and banker_dice is not None:
-                state["player_score_last"] = player_dice
-                state["banker_score_last"] = banker_dice
-            if len(state["history"]) > 200:
-                state["history"].pop(0)
-            logger.info(f"Resultado novo: {outcome} (round {round_id})")
-            state["new_result_added"] = True
-            state["signal_cooldown_until"] = datetime.now().timestamp() + 1.5  # pequeno buffer
+            if outcome and state["last_round_id"] != round_id:
+                state["last_round_id"] = round_id
+                state["history"].append(outcome)
+                state["player_score_last"] = None
+                state["banker_score_last"] = None
+                if len(state["history"]) > 200:
+                    state["history"].pop(0)
+                logger.info(f"Resultado novo: {outcome} (round {round_id}, score={score})")
+                state["new_result_added"] = True
+                # CORRIGIDO: removido cooldown de 1.5s aqui para enviar sinal imediatamente
+
+        elif isinstance(items, dict):
+            round_id = items.get("id")
+            if not round_id:
+                return
+
+            outcome_raw = (items.get("result") or {}).get("outcome") if isinstance(items.get("result"), dict) else items.get("result")
+            if not outcome_raw:
+                return
+
+            player_dice = banker_dice = None
+            if isinstance(items.get("result"), dict):
+                result = items.get("result") or {}
+                pl = result.get("player") or result.get("playerDice") or {}
+                bk = result.get("banker") or result.get("bankerDice") or {}
+                for k in ("score", "sum", "total", "points"):
+                    if k in pl: player_dice = pl[k]
+                    if k in bk: banker_dice = bk[k]
+
+            outcome = OUTCOME_MAP.get(outcome_raw)
+            if not outcome:
+                s = str(outcome_raw or "").lower()
+                if "player" in s: outcome = "🔵"
+                elif "banker" in s: outcome = "🔴"
+                elif any(x in s for x in ["tie", "empate", "draw"]): outcome = "🟡"
+
+            if outcome and state["last_round_id"] != round_id:
+                state["last_round_id"] = round_id
+                state["history"].append(outcome)
+                if player_dice is not None and banker_dice is not None:
+                    state["player_score_last"] = player_dice
+                    state["banker_score_last"] = banker_dice
+                else:
+                    state["player_score_last"] = None
+                    state["banker_score_last"] = None
+                if len(state["history"]) > 200:
+                    state["history"].pop(0)
+                logger.info(f"Resultado novo: {outcome} (round {round_id})")
+                state["new_result_added"] = True
+                # CORRIGIDO: removido cooldown de 1.5s aqui para enviar sinal imediatamente
+
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
 
 # ────────────────────────────────────────
-#  ESTRATÉGIAS (mantidas iguais)
+# ESTRATÉGIAS
 # ────────────────────────────────────────
 
 def oposto(cor: str) -> str:
@@ -337,9 +375,6 @@ async def resolve_after_result():
     acertou = last_outcome == target
     is_tie = last_outcome == "🟡"
 
-    p = state.get("player_score_last")
-    b = state.get("banker_score_last")
-
     if acertou or is_tie:
         state["total_greens"] += 1
         state["greens_seguidos"] += 1
@@ -347,12 +382,9 @@ async def resolve_after_result():
         elif state["martingale_count"] == 1: state["greens_gale_1"] += 1
         elif state["martingale_count"] == 2: state["greens_gale_2"] += 1
 
-        # Substituímos o texto por sticker
         await send_sticker_to_channel(GREEN_STICKER_ID)
-        
         await send_to_channel(format_placar())
         await send_to_channel(f"SEQUÊNCIA: {state['greens_seguidos']} greens 🔥")
-
         await clear_gale_messages()
 
         state.update({
@@ -443,7 +475,7 @@ async def api_worker():
         while True:
             try:
                 await update_history_from_api(session)
-                await asyncio.sleep(0.6)           # pequeno delay para ajudar na sincronia
+                # CORRIGIDO: removido sleep(0.6) para processar imediatamente
                 await resolve_after_result()
                 await try_send_signal()
             except Exception as e:
