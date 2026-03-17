@@ -17,16 +17,14 @@ load_dotenv()
 # Configurações
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7891678107:AAEmt_oN2Safe_2gEPS7x7XNeP8AA4hQXCI")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003779669370")
-API_URL = "https://api.signals-house.com/validate/results?tableId=27&lastResult=13382685"
-
+# CORRIGIDO: URL base SEM lastResult fixo
+BASE_API_URL = "https://api.signals-house.com/validate/results?tableId=27"
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json',
     'Accept-Language': 'en-US,en;q=0.9',
 }
-
 ANGOLA_TZ = pytz.timezone('Africa/Luanda')
-
 OUTCOME_MAP = {
     "Casa": "🔴",
     "Visitante": "🔵",
@@ -35,17 +33,17 @@ OUTCOME_MAP = {
 }
 
 # ─── TIMING ───
-API_POLL_INTERVAL = 0.5
+API_POLL_INTERVAL = 1.0
 SIGNAL_COOLDOWN_DURATION = 4.5
 POST_RESULT_DELAY = 1.2
 
-# ─── PARÂMETROS DA ESTRATÉGIA ───
+# ─── PARÂMETROS DA ESTRATÉGIA (AJUSTADOS) ───
 JANELA_PRINCIPAL = 36
 JANELA_EMPATE = 20
 JANELA_ENTROPIA = 12
-MIN_DESVIO_PORCENTAGEM = 4.8
-MIN_CONFANCA = 59.0
-MAX_TAXA_EMPATE_RECENTE = 14.0
+MIN_DESVIO_PORCENTAGEM = 3.5      # Reduzido de 4.8 para gerar mais sinais
+MIN_CONFANCA = 55.0                # Reduzido de 59.0
+MAX_TAXA_EMPATE_RECENTE = 18.0     # Aumentado de 14.0
 P_CASA = 44.5
 P_VISITANTE = 44.5
 P_TIE = 11.0
@@ -186,14 +184,30 @@ async def delete_analise_message():
         await delete_messages([state["analise_message_id"]])
         state["analise_message_id"] = None
 
-# ─── API ───
+# ─── API (CORRIGIDO: lastResult dinâmico) ───
+def build_api_url() -> str:
+    """Constrói a URL da API com lastResult dinâmico baseado no último round processado."""
+    if state["last_round_id"] is not None:
+        return f"{BASE_API_URL}&lastResult={state['last_round_id']}"
+    # Primeira chamada: sem lastResult para pegar os dados mais recentes
+    return BASE_API_URL
+
 async def fetch_api(session: aiohttp.ClientSession) -> Optional[Dict]:
+    url = build_api_url()
     try:
-        async with session.get(API_URL, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=7)) as resp:
+        async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=7)) as resp:
             if resp.status == 200:
-                return await resp.json()
+                data = await resp.json()
+                logger.debug(f"API response status=200, items={len(data.get('data', []))}")
+                return data
+            else:
+                logger.warning(f"API retornou status {resp.status}")
             return None
-    except:
+    except asyncio.TimeoutError:
+        logger.warning("API timeout")
+        return None
+    except Exception as e:
+        logger.error(f"Erro API: {e}")
         return None
 
 async def update_history_from_api(session) -> bool:
@@ -204,6 +218,7 @@ async def update_history_from_api(session) -> bool:
     try:
         items = data.get("data", [])
         if not isinstance(items, list) or len(items) == 0:
+            logger.debug("API retornou lista vazia")
             return False
 
         latest = items[0]
@@ -216,6 +231,7 @@ async def update_history_from_api(session) -> bool:
 
         outcome_raw = latest.get("result")
         if not outcome_raw:
+            logger.warning(f"Rodada {round_id} sem resultado")
             return False
 
         outcome = OUTCOME_MAP.get(outcome_raw)
@@ -226,6 +242,7 @@ async def update_history_from_api(session) -> bool:
             elif any(x in s for x in ["tie", "empate", "draw"]): outcome = "🟡"
 
         if not outcome:
+            logger.warning(f"Resultado não mapeado: {outcome_raw}")
             return False
 
         state["last_round_id"] = round_id
@@ -239,11 +256,11 @@ async def update_history_from_api(session) -> bool:
         now = datetime.now().timestamp()
         state["next_signal_possible_after"] = now + POST_RESULT_DELAY
 
-        logger.info(f"🔔 NOVA RODADA DETECTADA: {outcome} (round {round_id})")
+        logger.info(f"🔔 NOVA RODADA: {outcome} (ID: {round_id}) | Histórico: {len(state['history'])} rodadas")
         return True
 
     except Exception as e:
-        logger.debug(f"Erro processando API: {e}")
+        logger.error(f"Erro processando API: {e}")
         return False
 
 # ─── MOTOR DE DECISÃO (ANÁLISE ESTATÍSTICA) ───
@@ -269,16 +286,23 @@ def desvio_da_esperada(p_obs: float, p_esperada: float) -> float:
 
 def gerar_sinal_inteligente(history: List[str]) -> Tuple[Optional[str], Optional[str], float]:
     if len(history) < 12:
+        logger.info(f"📉 Histórico insuficiente: {len(history)}/12 rodadas")
         return None, None, 0.0
 
     p_c, p_v, p_t = proporcao_na_janela(history, JANELA_PRINCIPAL)
     p_c_short, p_v_short, p_t_short = proporcao_na_janela(history, JANELA_EMPATE)
 
+    logger.info(f"📊 Stats janela {JANELA_PRINCIPAL}: 🔴{p_c:.1f}% 🔵{p_v:.1f}% 🟡{p_t:.1f}%")
+    logger.info(f"📊 Stats janela {JANELA_EMPATE}: 🔴{p_c_short:.1f}% 🔵{p_v_short:.1f}% 🟡{p_t_short:.1f}%")
+
     if p_t_short > MAX_TAXA_EMPATE_RECENTE:
+        logger.info(f"⚠️ Empates recentes altos: {p_t_short:.1f}% > {MAX_TAXA_EMPATE_RECENTE}%")
         return "Muitos empates recentes", None, 0.0
 
     desv_c = desvio_da_esperada(p_c, P_CASA)
     desv_v = desvio_da_esperada(p_v, P_VISITANTE)
+
+    logger.info(f"📐 Desvios: Casa={desv_c:.2f} Visitante={desv_v:.2f} (mínimo={MIN_DESVIO_PORCENTAGEM})")
 
     ent = 1.0
     if len(history) >= JANELA_ENTROPIA:
@@ -288,6 +312,7 @@ def gerar_sinal_inteligente(history: List[str]) -> Tuple[Optional[str], Optional
         if n_bin >= 6:
             p_bin = c["🔴"] / n_bin
             ent = calcular_entropia_binaria(p_bin)
+            logger.info(f"🔬 Entropia: {ent:.3f}")
 
     score = 0.0
     cor_favor = None
@@ -305,17 +330,22 @@ def gerar_sinal_inteligente(history: List[str]) -> Tuple[Optional[str], Optional
     if abs(p_c_short - p_v_short) < 3.5:
         score *= 0.55
 
+    logger.info(f"🎯 Score: {score:.2f} | Cor: {cor_favor} | Limiar: 1.6")
+
     if score < 1.6 or cor_favor is None:
         return "Sem força estatística suficiente", None, 0.0
 
     confianca = min(78.0, 52.0 + score * 4.2)
+
     if confianca < MIN_CONFANCA:
+        logger.info(f"⚠️ Confiança baixa: {confianca:.1f}% < {MIN_CONFANCA}%")
         return "Confiança abaixo do mínimo", None, confianca
 
     nome = "Desequilíbrio estatístico"
     if ent < 0.75:
         nome += " + baixa entropia"
 
+    logger.info(f"✅ SINAL GERADO: {cor_favor} com {confianca:.1f}% confiança")
     return nome, cor_favor, round(confianca, 1)
 
 def gerar_sinal_estrategia(history: List[str], player_score=None, banker_score=None) -> Tuple[Optional[str], Optional[str]]:
@@ -324,7 +354,7 @@ def gerar_sinal_estrategia(history: List[str], player_score=None, banker_score=N
         return None, None
     return f"{nome} ({confianca}%)", cor
 
-# ─── MENSAGEM DE SINAL (ORIGINAL) ───
+# ─── MENSAGEM DE SINAL ───
 def main_entry_text(color: str) -> str:
     return (
         f"🧠 | Sinal confirmado\n"
@@ -351,10 +381,13 @@ async def clear_gale_messages():
 async def resolve_after_result():
     if not state.get("waiting_for_result") or not state.get("last_signal_color"):
         return
+
     if not state["history"]:
         return
+
     if state["last_result_round_id"] == state["last_round_id"]:
         return
+
     if state["last_signal_round_id"] and state["last_signal_round_id"] >= state["last_round_id"]:
         return
 
@@ -416,14 +449,19 @@ async def resolve_after_result():
 
 async def try_send_signal():
     now = datetime.now().timestamp()
+
     if state["waiting_for_result"]:
         await delete_analise_message()
         return
+
     if now < state["signal_cooldown_until"]:
         return
+
     if now < state.get("next_signal_possible_after", 0):
         return
+
     if len(state["history"]) < 12:
+        logger.info(f"⏳ Acumulando histórico: {len(state['history'])}/12")
         return
 
     padrao, cor = gerar_sinal_estrategia(
@@ -437,14 +475,15 @@ async def try_send_signal():
         return
 
     seq = "".join(state["history"][-6:])
+
     if state["last_signal_pattern"] == padrao and state["last_signal_sequence"] == seq:
         await refresh_analise_message()
         return
 
     await delete_analise_message()
+
     state["martingale_message_ids"] = []
     msg_id = await send_to_channel(main_entry_text(cor), disable_preview=False)
-
     if msg_id:
         state["entrada_message_id"] = msg_id
         state["waiting_for_result"] = True
@@ -459,22 +498,31 @@ async def try_send_signal():
 async def api_worker():
     connector = aiohttp.TCPConnector(limit=5, keepalive_timeout=30)
     async with aiohttp.ClientSession(connector=connector) as session:
+        poll_count = 0
         while True:
             try:
+                poll_count += 1
                 nova_rodada = await update_history_from_api(session)
+
                 if nova_rodada:
                     await resolve_after_result()
                     await asyncio.sleep(0.3)
                     await try_send_signal()
+
+                # Log periódico para confirmar que o bot está vivo
+                if poll_count % 60 == 0:
+                    logger.info(f"💓 Bot ativo | Polls: {poll_count} | Histórico: {len(state['history'])} | Último ID: {state['last_round_id']}")
+
                 await asyncio.sleep(API_POLL_INTERVAL)
+
             except Exception as e:
-                logger.debug(f"Erro loop principal: {e}")
+                logger.error(f"Erro loop principal: {e}")
                 await asyncio.sleep(API_POLL_INTERVAL)
 
 async def main():
     load_state()
     logger.info("Bot iniciado...")
-    await send_to_channel("🤖 BOT INICIADO FOOTBALL STUDIO🤖")
+    await send_to_channel("🤖 BOT INICIADO FOOTBALL STUDIO 🤖")
     await refresh_analise_message()
     await api_worker()
 
