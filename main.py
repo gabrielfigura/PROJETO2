@@ -42,8 +42,21 @@ LOSS_STICKER_ID = "CAACAgEAAxkBAAMHablwRJ3yTERtooEJKzCbGMCfvv8AAucCAALGBLlEm0eHr
 # ═══════════════════════════════════════════════
 API_POLL_INTERVAL = 0.5
 SIGNAL_COOLDOWN_DURATION = 4.5
-SIGNAL_DELAY_MIN = 2       # Delay mínimo antes de enviar sinal (mais rápido agora)
-SIGNAL_DELAY_MAX = 5        # Delay máximo antes de enviar sinal (mais rápido agora)
+SIGNAL_DELAY_MIN = 2
+SIGNAL_DELAY_MAX = 5
+
+# ═══════════════════════════════════════════════
+# CONSTANTES DE ANÁLISE ESTATÍSTICA
+# ═══════════════════════════════════════════════
+JANELA_PRINCIPAL = 36
+JANELA_EMPATE = 20
+JANELA_ENTROPIA = 12
+MIN_DESVIO_PORCENTAGEM = 4.8
+MIN_CONFANCA = 59.0
+MAX_TAXA_EMPATE_RECENTE = 14.0
+P_CASA = 44.5
+P_VISITANTE = 44.5
+P_TIE = 11.0
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)-5s | %(message)s')
 logger = logging.getLogger("FootballStudioBot")
@@ -141,192 +154,130 @@ async def update_history_from_api(session):
         items = data.get("data", [])
         if not isinstance(items, list) or len(items) == 0:
             return False
-
         latest = items[0]
         round_id = latest.get("id")
         if not round_id or round_id == state["last_round_id"]:
             return False
-
         outcome_raw = latest.get("result")
         if not outcome_raw:
             return False
-
         outcome = OUTCOME_MAP.get(outcome_raw)
         if not outcome:
             s = str(outcome_raw or "").lower()
             if "casa" in s: outcome = "🔴"
             elif "visitante" in s: outcome = "🔵"
             elif "tie" in s or "empate" in s: outcome = "🟡"
-
         if outcome:
             state["last_round_id"] = round_id
             state["history"].append(outcome)
             if len(state["history"]) > 500:
-                state["history"] = state["history"][-500:]
+                state["history"].pop(0)
             logger.info(f"Novo resultado adicionado: {outcome} (id {round_id})")
             return True
-
         return False
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
         return False
 
 
-# ════════════════════════════════════════════════════════════════
-# NOVAS ESTRATÉGIAS DE PADRÕES — rápidas e assertivas
-# ════════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────
+# ANÁLISE ESTATÍSTICA (entropia + desvio + janelas)
+# ────────────────────────────────────────────────
 
-def filtrar_empates(hist: List[str]) -> List[str]:
-    """Remove empates para análise de padrão binário."""
-    return [x for x in hist if x in ("🔴", "🔵")]
-
-
-def detectar_padrao(history: List[str]) -> tuple[Optional[str], Optional[str]]:
-    """
-    Analisa os últimos 3-6 resultados (sem empates) e retorna (nome_padrão, cor_sinal).
-    Retorna (None, None) se nenhum padrão forte for encontrado.
-    """
-    sem_empate = filtrar_empates(history)
-
-    if len(sem_empate) < 2:
-        return None, None
-
-    ultimos6 = sem_empate[-6:]
-    ultimos5 = sem_empate[-5:] if len(sem_empate) >= 5 else None
-    ultimos4 = sem_empate[-4:] if len(sem_empate) >= 4 else None
-    ultimos3 = sem_empate[-3:] if len(sem_empate) >= 3 else None
-    ultimos2 = sem_empate[-2:]
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 1: Sequência longa (4-6 iguais) → Quebra forte
-    # ──────────────────────────────────────────────
-    if len(ultimos6) >= 5 and all(x == "🔴" for x in ultimos6[-5:]):
-        return "Sequência longa 🔴×5 → quebra", "🔵"
-    if len(ultimos6) >= 5 and all(x == "🔵" for x in ultimos6[-5:]):
-        return "Sequência longa 🔵×5 → quebra", "🔴"
-
-    if len(ultimos6) >= 4 and all(x == "🔴" for x in ultimos6[-4:]):
-        return "Sequência forte 🔴×4 → quebra", "🔵"
-    if len(ultimos6) >= 4 and all(x == "🔵" for x in ultimos6[-4:]):
-        return "Sequência forte 🔵×4 → quebra", "🔴"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 2: Tripla (3 iguais) → Quebra
-    # ──────────────────────────────────────────────
-    if ultimos3 and ultimos3 == ["🔴", "🔴", "🔴"]:
-        return "Tripla 🔴🔴🔴 → quebra", "🔵"
-    if ultimos3 and ultimos3 == ["🔵", "🔵", "🔵"]:
-        return "Tripla 🔵🔵🔵 → quebra", "🔴"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 3: Dupla (2 iguais) → Quebra
-    # ──────────────────────────────────────────────
-    if ultimos2 == ["🔴", "🔴"]:
-        return "Dupla 🔴🔴 → quebra", "🔵"
-    if ultimos2 == ["🔵", "🔵"]:
-        return "Dupla 🔵🔵 → quebra", "🔴"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 4: Alternância perfeita (zigzag) → continuar padrão
-    # ──────────────────────────────────────────────
-    if ultimos4 and ultimos4 == ["🔴", "🔵", "🔴", "🔵"]:
-        return "Alternância 🔴🔵🔴🔵 → continua", "🔴"
-    if ultimos4 and ultimos4 == ["🔵", "🔴", "🔵", "🔴"]:
-        return "Alternância 🔵🔴🔵🔴 → continua", "🔵"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 5: Pressão (2 de 1 cor após 1 da outra) → cor dominante
-    # ──────────────────────────────────────────────
-    if ultimos3 and ultimos3 == ["🔴", "🔵", "🔵"]:
-        return "Pressão 🔵🔵 após 🔴 → continua", "🔴"
-    if ultimos3 and ultimos3 == ["🔵", "🔴", "🔴"]:
-        return "Pressão 🔴🔴 após 🔵 → continua", "🔵"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 6: Retorno após quebra → volta à cor dominante
-    # ──────────────────────────────────────────────
-    if ultimos4 and ultimos4 == ["🔴", "🔴", "🔵", "🔴"]:
-        return "Retorno 🔴 após quebra", "🔴"
-    if ultimos4 and ultimos4 == ["🔵", "🔵", "🔴", "🔵"]:
-        return "Retorno 🔵 após quebra", "🔵"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 7: Sanduíche (ABA) → repetir A
-    # ──────────────────────────────────────────────
-    if ultimos3 and ultimos3[0] == ultimos3[2] and ultimos3[0] != ultimos3[1]:
-        cor = ultimos3[0]
-        return f"Sanduíche {cor} → repete", cor
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 8: Dominância recente (4 de 5 da mesma cor)
-    # ──────────────────────────────────────────────
-    if ultimos5:
-        count_red = ultimos5.count("🔴")
-        count_blue = ultimos5.count("🔵")
-        if count_red >= 4:
-            return "Dominância 🔴 (4/5) → quebra", "🔵"
-        if count_blue >= 4:
-            return "Dominância 🔵 (4/5) → quebra", "🔴"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 9: Recuperação (após perder domínio, cor volta)
-    # Ex: 🔴🔴🔵🔵🔴 → 🔴 recupera
-    # ──────────────────────────────────────────────
-    if ultimos5 and ultimos5 == ["🔴", "🔴", "🔵", "🔵", "🔴"]:
-        return "Recuperação 🔴 após pressão 🔵", "🔴"
-    if ultimos5 and ultimos5 == ["🔵", "🔵", "🔴", "🔴", "🔵"]:
-        return "Recuperação 🔵 após pressão 🔴", "🔵"
-
-    # ──────────────────────────────────────────────
-    # PADRÃO 10: Espelho duplo (AABB → B continua)
-    # ──────────────────────────────────────────────
-    if ultimos4 and ultimos4[:2] == ultimos4[2:]:
-        # AABB onde AA==BB → improvável, skip
-        pass
-    elif ultimos4 and ultimos4[0] == ultimos4[1] and ultimos4[2] == ultimos4[3] and ultimos4[0] != ultimos4[2]:
-        cor = ultimos4[2]
-        oposta = "🔴" if cor == "🔵" else "🔵"
-        return f"Espelho AABB → quebra {cor}", oposta
-
-    return None, None
+def calcular_entropia_binaria(p: float) -> float:
+    if p <= 0 or p >= 1:
+        return 0.0
+    return - (p * math.log2(p) + (1 - p) * math.log2(1 - p))
 
 
-def verificar_excesso_empates(history: List[str], janela: int = 10) -> bool:
-    """Verifica se há muitos empates recentes (>20%), o que invalida sinais."""
-    if len(history) < janela:
-        recorte = history
-    else:
-        recorte = history[-janela:]
-    if len(recorte) == 0:
-        return False
-    empates = recorte.count("🟡")
-    return (empates / len(recorte) * 100) > 20.0
+def proporcao_na_janela(hist: List[str], janela: int) -> tuple[float, float, float]:
+    if len(hist) < 3:
+        return 0.0, 0.0, 0.0
+    janela_real = min(janela, len(hist))
+    recorte = hist[-janela_real:]
+    c = Counter(recorte)
+    n = len(recorte)
+    p_c = c["🔴"] / n * 100 if n > 0 else 0
+    p_v = c["🔵"] / n * 100 if n > 0 else 0
+    p_t = c["🟡"] / n * 100 if n > 0 else 0
+    return p_c, p_v, p_t
+
+
+def desvio_da_esperada(p_obs: float, p_esperada: float) -> float:
+    return abs(p_obs - p_esperada)
+
+
+def gerar_sinal_inteligente(
+    history: List[str]
+) -> tuple[Optional[str], Optional[str], float]:
+    if len(history) < 12:
+        return None, None, 0.0
+
+    p_c, p_v, p_t = proporcao_na_janela(history, JANELA_PRINCIPAL)
+    p_c_short, p_v_short, p_t_short = proporcao_na_janela(history, JANELA_EMPATE)
+
+    if p_t_short > MAX_TAXA_EMPATE_RECENTE:
+        return "Muitos empates recentes", None, 0.0
+
+    desv_c = desvio_da_esperada(p_c, P_CASA)
+    desv_v = desvio_da_esperada(p_v, P_VISITANTE)
+
+    ent = 1.0
+    if len(history) >= JANELA_ENTROPIA:
+        recorte = history[-JANELA_ENTROPIA:]
+        c = Counter(x for x in recorte if x in ("🔴", "🔵"))
+        n_bin = sum(c.values())
+        if n_bin >= 6:
+            p_bin = c["🔴"] / n_bin
+            ent = calcular_entropia_binaria(p_bin)
+
+    score = 0.0
+    cor_favor = None
+
+    if desv_c > MIN_DESVIO_PORCENTAGEM and p_c > p_v + 2:
+        score += (desv_c - MIN_DESVIO_PORCENTAGEM) * 1.8
+        cor_favor = "🔴"
+    elif desv_v > MIN_DESVIO_PORCENTAGEM and p_v > p_c + 2:
+        score += (desv_v - MIN_DESVIO_PORCENTAGEM) * 1.8
+        cor_favor = "🔵"
+
+    if ent < 0.78:
+        score += (0.92 - ent) * 2.2
+
+    if abs(p_c_short - p_v_short) < 3.5:
+        score *= 0.55
+
+    if score < 1.6 or cor_favor is None:
+        return "Sem força estatística suficiente", None, 0.0
+
+    confianca = min(78.0, 52.0 + score * 4.2)
+
+    if confianca < MIN_CONFANCA:
+        return "Confiança abaixo do mínimo", None, confianca
+
+    nome = "Desequilíbrio estatístico"
+    if ent < 0.75:
+        nome += " + baixa entropia"
+
+    return nome, cor_favor, round(confianca, 1)
 
 
 def gerar_sinal_estrategia(history: List[str]):
-    """Gera sinal baseado em padrões claros dos últimos resultados."""
-    if len(history) < 3:
-        return None, None
-
-    # Bloquear se muitos empates recentes
-    if verificar_excesso_empates(history):
-        logger.info("Muitos empates recentes — sinal bloqueado")
-        return None, None
-
-    nome, cor = detectar_padrao(history)
+    nome, cor, confianca = gerar_sinal_inteligente(history)
     if cor is None:
         return None, None
+    return f"{nome} ({confianca}%)", cor
 
-    logger.info(f"Padrão detectado: {nome} → {cor}")
-    return nome, cor
 
+# ────────────────────────────────────────────────
+# MENSAGENS E SINAIS
+# ────────────────────────────────────────────────
 
 def main_entry_text(nome: str, color: str) -> str:
     if color == "🔴":
         lado = "CASA 🔴"
     else:
         lado = "VISITANTE 🔵"
-
     return (
         f"🧠 | Sinal confirmado\n"
         f"⚽️ | Mesa Football Studio\n"
@@ -351,28 +302,22 @@ async def clear_gale_messages():
 
 
 async def resolve_after_result():
-    """Valida o sinal anterior quando chega o resultado da rodada onde o sinal foi aplicado."""
     if not state.get("waiting_for_result") or not state.get("last_signal_color"):
         return
-
     if not state["history"]:
         return
-
     if state["last_result_round_id"] == state["last_round_id"]:
         return
 
     state["last_result_round_id"] = state["last_round_id"]
-
     last_outcome = state["history"][-1]
     target = state["last_signal_color"]
-
     acertou = last_outcome == target
     is_tie = last_outcome == "🟡"
 
     if acertou or is_tie:
         state["total_greens"] += 1
         state["greens_seguidos"] += 1
-
         if state["martingale_count"] == 0:
             state["greens_sem_gale"] += 1
         elif state["martingale_count"] == 1:
@@ -413,24 +358,21 @@ async def resolve_after_result():
 
 
 async def try_send_signal():
-    """Envia sinal somente após o delay inteligente pós-resultado."""
     now = datetime.now().timestamp()
 
     if state["waiting_for_result"]:
         return
-
     if now < state["signal_cooldown_until"]:
         return
-
     if not state["pending_signal_analysis"]:
         return
-
     if now < state["signal_send_after"]:
         return
 
+    # Delay passou, tenta gerar e enviar o sinal
     state["pending_signal_analysis"] = False
 
-    if len(state["history"]) < 3:
+    if len(state["history"]) < 12:
         return
 
     nome, cor = gerar_sinal_estrategia(state["history"])
@@ -438,7 +380,6 @@ async def try_send_signal():
         return
 
     await delete_analise_message()
-
     state["martingale_message_ids"] = []
     texto = main_entry_text(nome, cor)
     msg_id = await send_to_channel(texto)
@@ -458,15 +399,19 @@ async def api_worker():
         while True:
             try:
                 updated = await update_history_from_api(session)
+
                 if updated:
+                    # 1. Validar sinal anterior
                     await resolve_after_result()
 
+                    # 2. Agendar delay para próximo sinal
                     if not state["waiting_for_result"]:
                         delay = random.uniform(SIGNAL_DELAY_MIN, SIGNAL_DELAY_MAX)
                         state["pending_signal_analysis"] = True
                         state["signal_send_after"] = datetime.now().timestamp() + delay
                         logger.info(f"Novo resultado detectado. Sinal agendado em {delay:.1f}s")
 
+                # 3. Tenta enviar sinal se o delay já passou
                 await try_send_signal()
 
             except Exception as e:
