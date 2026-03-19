@@ -17,7 +17,6 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7891678107:AAEmt_oN2Safe_2gEPS7x7XNeP8AA4hQXCI")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003779669370")
 API_URL = "https://api.signals-house.com/validate/results?tableId=27&lastResult=13382685"
-
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json',
@@ -42,10 +41,9 @@ LOSS_STICKER_ID = "CAACAgEAAxkBAAMHablwRJ3yTERtooEJKzCbGMCfvv8AAucCAALGBLlEm0eHr
 # ═══════════════════════════════════════════════
 API_POLL_INTERVAL = 0.5
 SIGNAL_COOLDOWN_DURATION = 4.5
-POST_RESULT_DELAY = 1.2
 
 # ═══════════════════════════════════════════════
-# CONSTANTES DE ANÁLISE ESTATÍSTICA
+# CONSTANTES DE ANÁLISE ESTATÍSTICA (do script 2)
 # ═══════════════════════════════════════════════
 JANELA_PRINCIPAL = 36
 JANELA_EMPATE = 20
@@ -57,6 +55,13 @@ P_CASA = 44.5
 P_VISITANTE = 44.5
 P_TIE = 11.0
 
+# ═══════════════════════════════════════════════
+# CONTROLE DE TIMING INTELIGENTE
+# ═══════════════════════════════════════════════
+MARGEM_SEGURANCA_ANTES = 3.0    # enviar sinal pelo menos 3s antes da próxima rodada
+MARGEM_SEGURANCA_DEPOIS = 8.0   # no máximo 8s antes
+MAX_TIMESTAMPS_GUARDADOS = 20   # quantos timestamps guardar para calcular intervalo médio
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)-5s | %(message)s')
 logger = logging.getLogger("FootballStudioBot")
 
@@ -66,33 +71,20 @@ state: Dict[str, Any] = {
     "history": [], "last_round_id": None, "waiting_for_result": False,
     "last_signal_color": None, "martingale_count": 0, "entrada_message_id": None,
     "martingale_message_ids": [], "greens_seguidos": 0, "total_greens": 0,
-    "greens_sem_gale": 0, "greens_gale_1": 0, "greens_gale_2": 0,
+    "greens_sem_gale": 0, "greens_gale_1": 0,
     "total_empates": 0, "total_losses": 0,
     "signal_cooldown_until": 0.0, "analise_message_id": None,
-    "last_reset_date": None,
     "last_result_round_id": None,
-    "next_signal_possible_after": 0.0,
+    # Timing inteligente
+    "result_timestamps": [],        # timestamps dos últimos resultados
+    "avg_round_interval": None,     # intervalo médio entre rodadas (segundos)
+    "last_result_time": 0.0,        # timestamp do último resultado recebido
+    "signal_scheduled": False,      # se há sinal agendado para enviar
+    "signal_scheduled_cor": None,
+    "signal_scheduled_nome": None,
+    "signal_send_at": 0.0,          # quando enviar o sinal agendado
+    "signal_for_after_round_id": None,  # round_id após o qual o sinal é válido
 }
-
-
-def should_reset_placar() -> bool:
-    now = datetime.now(ANGOLA_TZ)
-    if state["last_reset_date"] != now.date():
-        state["last_reset_date"] = now.date()
-        return True
-    if state["total_losses"] >= 10:
-        return True
-    if state["total_greens"] >= 500:
-        return True
-    return False
-
-
-def reset_placar_if_needed():
-    if should_reset_placar():
-        for k in ["total_greens", "greens_sem_gale", "greens_gale_1", "greens_gale_2",
-                  "total_empates", "total_losses", "greens_seguidos"]:
-            state[k] = 0
-        logger.info("Placar resetado")
 
 
 async def send_to_channel(text: str, parse_mode="HTML") -> Optional[int]:
@@ -131,12 +123,9 @@ def calcular_acertividade() -> str:
 def format_placar() -> str:
     acert = calcular_acertividade()
     return (
-        "🏆 <b>RESUMO</b> 🏆\n"
-        f"✅ Sem gale: <b>{state['greens_sem_gale']}</b>\n"
-        f"🔄 Gale 1: <b>{state['greens_gale_1']}</b>\n"
-        f"🔄 Gale 2: <b>{state['greens_gale_2']}</b>\n"
-        f"⛔ Losses: <b>{state['total_losses']}</b>\n"
-        f"🎯 Greens: <b>{state['total_greens']}</b>  |  {acert}"
+        f"📊 Placar atual 🟢 {state['total_greens']} 🔴 {state['total_losses']}\n"
+        f"✅ Assertividade {acert}\n"
+        f"🏆 {state['greens_seguidos']} Greens seguidos"
     )
 
 
@@ -157,6 +146,15 @@ async def delete_analise_message():
         state["analise_message_id"] = None
 
 
+def reset_placar_if_needed():
+    """Reseta o placar quando atinge 500 greens."""
+    if state["total_greens"] >= 500:
+        for k in ["total_greens", "greens_sem_gale", "greens_gale_1",
+                   "total_empates", "total_losses", "greens_seguidos"]:
+            state[k] = 0
+        logger.info("Placar resetado (500 greens atingidos)")
+
+
 async def fetch_api(session: aiohttp.ClientSession) -> Optional[Dict]:
     try:
         async with session.get(API_URL, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -168,8 +166,23 @@ async def fetch_api(session: aiohttp.ClientSession) -> Optional[Dict]:
         return None
 
 
+def atualizar_intervalo_medio():
+    """Calcula o intervalo médio entre rodadas com base nos timestamps recentes."""
+    ts_list = state["result_timestamps"]
+    if len(ts_list) < 2:
+        state["avg_round_interval"] = None
+        return
+    intervalos = [ts_list[i] - ts_list[i - 1] for i in range(1, len(ts_list))]
+    # Remover outliers (intervalos maiores que 120s provavelmente são pausas)
+    intervalos_filtrados = [i for i in intervalos if i < 120]
+    if not intervalos_filtrados:
+        state["avg_round_interval"] = None
+        return
+    state["avg_round_interval"] = sum(intervalos_filtrados) / len(intervalos_filtrados)
+    logger.info(f"Intervalo médio entre rodadas: {state['avg_round_interval']:.1f}s")
+
+
 async def update_history_from_api(session):
-    reset_placar_if_needed()
     data = await fetch_api(session)
     if not data:
         return False
@@ -177,34 +190,33 @@ async def update_history_from_api(session):
         items = data.get("data", [])
         if not isinstance(items, list) or len(items) == 0:
             return False
-
         latest = items[0]
         round_id = latest.get("id")
         if not round_id or round_id == state["last_round_id"]:
             return False
-
         outcome_raw = latest.get("result")
         if not outcome_raw:
             return False
-
         outcome = OUTCOME_MAP.get(outcome_raw)
         if not outcome:
             s = str(outcome_raw or "").lower()
             if "casa" in s: outcome = "🔴"
             elif "visitante" in s: outcome = "🔵"
             elif "tie" in s or "empate" in s: outcome = "🟡"
-
         if outcome:
+            now = datetime.now().timestamp()
             state["last_round_id"] = round_id
             state["history"].append(outcome)
             if len(state["history"]) > 500:
                 state["history"].pop(0)
+            # Registrar timestamp para cálculo de intervalo
+            state["result_timestamps"].append(now)
+            if len(state["result_timestamps"]) > MAX_TIMESTAMPS_GUARDADOS:
+                state["result_timestamps"].pop(0)
+            state["last_result_time"] = now
+            atualizar_intervalo_medio()
             logger.info(f"Novo resultado adicionado: {outcome} (id {round_id})")
-
-            now = datetime.now().timestamp()
-            state["next_signal_possible_after"] = now + POST_RESULT_DELAY
             return True
-
         return False
     except Exception as e:
         logger.debug(f"Erro processando API: {e}")
@@ -212,7 +224,7 @@ async def update_history_from_api(session):
 
 
 # ────────────────────────────────────────────────
-# ANÁLISE ESTATÍSTICA (entropia + desvio + janelas)
+# ANÁLISE ESTATÍSTICA (estratégias do script 2)
 # ────────────────────────────────────────────────
 
 def calcular_entropia_binaria(p: float) -> float:
@@ -300,7 +312,7 @@ def gerar_sinal_estrategia(history: List[str]):
 
 
 # ────────────────────────────────────────────────
-# MENSAGENS E SINAIS
+# MENSAGENS E SINAIS (formato do script 1)
 # ────────────────────────────────────────────────
 
 def main_entry_text(nome: str, color: str) -> str:
@@ -312,17 +324,15 @@ def main_entry_text(nome: str, color: str) -> str:
         f"🧠 | Sinal confirmado\n"
         f"⚽️ | Mesa Football Studio\n"
         f"⚔️ | Aposte no {lado} + 🟠\n"
-        f"♻️ | Fazer máximo G2\n"
+        f"♻️ | Fazer máximo G1\n"
         f"💻 | Abra o jogo pelo link abaixo ⤵️\n"
         f"\n"
         f'<a href="https://btt-pt.hopghpfa.com/pt/casino?partner=p8506p33116p4649#registration-bonus">👉Regista-te aqui: BETILT</a>'
     )
 
 
-async def send_gale_warning(level: int):
-    if level not in (1, 2):
-        return
-    text = f"🔄 <b>GALE {level}</b> 🔄\nContinuar na mesma cor!"
+async def send_gale_warning():
+    text = "🔄 <b>GALE 1</b> 🔄\nContinuar na mesma cor!"
     msg_id = await send_to_channel(text)
     if msg_id:
         state["martingale_message_ids"].append(msg_id)
@@ -342,14 +352,10 @@ async def resolve_after_result():
         return
 
     state["last_result_round_id"] = state["last_round_id"]
-
     last_outcome = state["history"][-1]
     target = state["last_signal_color"]
     acertou = last_outcome == target
     is_tie = last_outcome == "🟡"
-
-    now = datetime.now().timestamp()
-    state["next_signal_possible_after"] = now + POST_RESULT_DELAY
 
     if acertou or is_tie:
         state["total_greens"] += 1
@@ -358,38 +364,29 @@ async def resolve_after_result():
             state["greens_sem_gale"] += 1
         elif state["martingale_count"] == 1:
             state["greens_gale_1"] += 1
-        elif state["martingale_count"] == 2:
-            state["greens_gale_2"] += 1
 
         await send_sticker_to_channel(GREEN_STICKER_ID)
         await send_to_channel(format_placar())
-        await send_to_channel(f"SEQUÊNCIA: {state['greens_seguidos']} greens 🔥")
         await clear_gale_messages()
         state.update({
             "waiting_for_result": False, "last_signal_color": None,
             "martingale_count": 0, "entrada_message_id": None,
         })
+        reset_placar_if_needed()
         await refresh_analise_message()
         return
 
     # Errou
     state["martingale_count"] += 1
-
     if state["martingale_count"] == 1:
-        await send_gale_warning(1)
+        await send_gale_warning()
         return
 
-    elif state["martingale_count"] == 2:
-        await send_gale_warning(2)
-        return
-
-    # Após gale 2 errado → LOSS
-    if state["martingale_count"] >= 3:
+    # Após gale 1 errado → LOSS
+    if state["martingale_count"] >= 2:
         state["greens_seguidos"] = 0
         state["total_losses"] += 1
-
         await send_sticker_to_channel(LOSS_STICKER_ID)
-        await send_to_channel("🟥 <b>LOSS</b> 🟥")
         await send_to_channel(format_placar())
         await clear_gale_messages()
         state.update({
@@ -400,13 +397,24 @@ async def resolve_after_result():
         await refresh_analise_message()
 
 
-async def try_send_signal():
+def cancelar_sinal_agendado():
+    """Cancela qualquer sinal pendente."""
+    if state["signal_scheduled"]:
+        logger.info("Sinal agendado cancelado (novo resultado já saiu)")
+    state["signal_scheduled"] = False
+    state["signal_scheduled_cor"] = None
+    state["signal_scheduled_nome"] = None
+    state["signal_send_at"] = 0.0
+    state["signal_for_after_round_id"] = None
+
+
+def agendar_sinal():
+    """Após novo resultado, analisa e agenda sinal para a próxima rodada."""
     now = datetime.now().timestamp()
+
     if state["waiting_for_result"]:
         return
     if now < state["signal_cooldown_until"]:
-        return
-    if now < state["next_signal_possible_after"]:
         return
     if len(state["history"]) < 12:
         return
@@ -414,6 +422,60 @@ async def try_send_signal():
     nome, cor = gerar_sinal_estrategia(state["history"])
     if not cor:
         return
+
+    avg = state["avg_round_interval"]
+    if avg and avg > 10:
+        # Enviar entre 3 e 8 segundos antes da próxima rodada estimada
+        tempo_ate_proxima = avg
+        margem = random.uniform(MARGEM_SEGURANCA_ANTES, min(MARGEM_SEGURANCA_DEPOIS, tempo_ate_proxima * 0.5))
+        delay = max(0.5, tempo_ate_proxima - margem)
+    else:
+        # Sem dados suficientes, enviar após um pequeno delay
+        delay = random.uniform(2.0, 5.0)
+
+    send_at = now + delay
+    state["signal_scheduled"] = True
+    state["signal_scheduled_cor"] = cor
+    state["signal_scheduled_nome"] = nome
+    state["signal_send_at"] = send_at
+    state["signal_for_after_round_id"] = state["last_round_id"]
+    logger.info(f"Sinal agendado: {cor} em {delay:.1f}s (intervalo médio: {avg:.1f}s)" if avg else f"Sinal agendado: {cor} em {delay:.1f}s")
+
+
+async def try_send_scheduled_signal():
+    """Envia o sinal agendado se estiver na janela segura."""
+    if not state["signal_scheduled"]:
+        return
+    if state["waiting_for_result"]:
+        cancelar_sinal_agendado()
+        return
+
+    now = datetime.now().timestamp()
+
+    # Verificar se o round_id mudou desde o agendamento (resultado já saiu)
+    if state["signal_for_after_round_id"] != state["last_round_id"]:
+        logger.info("Sinal cancelado: novo resultado já saiu antes do envio")
+        cancelar_sinal_agendado()
+        return
+
+    # Ainda não chegou a hora de enviar
+    if now < state["signal_send_at"]:
+        return
+
+    # Verificar janela segura: se o intervalo médio existe, checar se ainda estamos
+    # dentro do tempo esperado antes da próxima rodada
+    avg = state["avg_round_interval"]
+    if avg:
+        tempo_desde_ultimo = now - state["last_result_time"]
+        # Se já passou mais tempo que o intervalo médio, o resultado pode sair a qualquer momento
+        if tempo_desde_ultimo > avg + 2.0:
+            logger.info("Sinal cancelado: fora da janela segura (tempo expirado)")
+            cancelar_sinal_agendado()
+            return
+
+    cor = state["signal_scheduled_cor"]
+    nome = state["signal_scheduled_nome"]
+    cancelar_sinal_agendado()
 
     await delete_analise_message()
     state["martingale_message_ids"] = []
@@ -425,7 +487,7 @@ async def try_send_signal():
         state["last_signal_color"] = cor
         state["martingale_count"] = 0
         state["signal_cooldown_until"] = now + SIGNAL_COOLDOWN_DURATION
-        logger.info(f"Sinal enviado → {cor} ({nome}) - cooldown até {state['signal_cooldown_until']:.1f}")
+        logger.info(f"Sinal enviado → {cor} ({nome})")
 
 
 async def api_worker():
@@ -434,10 +496,25 @@ async def api_worker():
         while True:
             try:
                 updated = await update_history_from_api(session)
-                await resolve_after_result()
-                await try_send_signal()
+
+                if updated:
+                    # Se havia sinal agendado e novo resultado saiu, cancelar
+                    if state["signal_scheduled"] and state["signal_for_after_round_id"] != state["last_round_id"]:
+                        cancelar_sinal_agendado()
+
+                    # 1. Validar sinal anterior
+                    await resolve_after_result()
+
+                    # 2. Agendar novo sinal para próxima rodada
+                    if not state["waiting_for_result"]:
+                        agendar_sinal()
+
+                # 3. Tenta enviar sinal agendado se a hora chegou
+                await try_send_scheduled_signal()
+
             except Exception as e:
                 logger.debug(f"Erro no loop principal: {e}")
+
             await asyncio.sleep(API_POLL_INTERVAL)
 
 
